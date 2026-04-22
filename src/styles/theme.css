@@ -1,0 +1,425 @@
+/* src/styles/theme.css - PREMIUM WARM ORANGE/RED THEME */
+
+/* ============================================
+   GLOBAL CSS VARIABLES - WARM ORANGE THEME
+   ============================================ */
+:root {
+    /* Primary Colors - Warm Orange/Red Palette */
+    --primary-50: #fff7ed;
+    --primary-100: #ffedd5;
+    --primary-200: #fed7aa;
+    --primary-300: #fdba74;
+    --primary-400: #fb923c;
+    --primary-500: #f97316;
+    --primary-600: #ea580c;
+    --primary-700: #c2410c;
+    --primary-800: #9a3412;
+    --primary-900: #7c2d12;
+
+    /* Accent - Deep Red */
+    --accent-50: #fef2f2;
+    --accent-100: #fee2e2;
+    --accent-200: #fecaca;
+    --accent-300: #fca5a5;
+    --accent-400: #f87171;
+    --accent-500: #ef4444;
+    --accent-600: #dc2626;
+    --accent-700: #b91c1c;
+    --accent-800: #991b1b;
+    --accent-900: #7f1d1d;
+
+    /* Neutral Colors */
+    --gray-50: #fafafa;
+    --gray-100: #f4f4f5;
+    --gray-200: #e4e4e7;
+    --gray-300: #d4d4d8;
+    --gray-400: #a1a1aa;
+    --gray-500: #71717a;
+    --gray-600: #52525b;
+    --gray-700: #3f3f46;
+    --gray-800: #27272a;
+    --gray-900: #18181b;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%);
+    --gradient-warm: linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%);
+    --gradient-hot: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+    --gradient-sunset: linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #ef4444 100%);
+    --gradient-dark: linear-gradient(180deg, #18181b 0%, #27272a 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --shadow-primary: 0 10px 40px -10px rgba(249, 115, 22, 0.4);
+    --shadow-glow: 0 0 40px rgba(249, 115, 22, 0.3);
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-2xl: 32px;
+    --radius-full: 9999px;
+
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================
+   GLOBAL RESET & BASE STYLES
+   ============================================ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--gray-900);
+    background: var(--gray-50);
+}
+
+/* ============================================
+   BUTTON STYLES
+   ============================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary {
+    background: var(--gradient-primary);
+    color: white;
+    box-shadow: var(--shadow-primary);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 50px -10px rgba(249, 115, 22, 0.5);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: white;
+    color: var(--gray-700);
+    border: 2px solid var(--gray-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover {
+    background: var(--gray-50);
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--gray-600);
+}
+
+.btn-ghost:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+/* ============================================
+   INPUT STYLES
+   ============================================ */
+.input-field {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--gray-900);
+    background: white;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    outline: none;
+    transition: all var(--transition-normal);
+}
+
+.input-field:focus {
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1);
+}
+
+.input-field::placeholder {
+    color: var(--gray-400);
+}
+
+/* ============================================
+   CARD STYLES
+   ============================================ */
+.card {
+    background: white;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--gray-100);
+    overflow: hidden;
+}
+
+.card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-xl);
+}
+
+/* ============================================
+   NAVBAR OVERRIDE
+   ============================================ */
+.navbar {
+    background: white !important;
+    border-bottom: 1px solid var(--gray-100) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.navbar .nav-link {
+    color: var(--gray-600) !important;
+    font-weight: 500 !important;
+}
+
+.navbar .nav-link:hover {
+    color: var(--primary-600) !important;
+}
+
+.navbar .nav-link.active {
+    color: var(--primary-600) !important;
+    background: var(--primary-50) !important;
+}
+
+.navbar .get-started-btn {
+    background: var(--gradient-primary) !important;
+    color: white !important;
+    box-shadow: var(--shadow-primary) !important;
+}
+
+/* ============================================
+   AUTH PAGES - ORANGE/RED THEME
+   ============================================ */
+.auth-page-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gradient-sunset);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-page-container::before {
+    content: '';
+    position: absolute;
+    width: 800px;
+    height: 800px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 60%);
+    top: -300px;
+    right: -300px;
+    border-radius: 50%;
+    animation: floatSlow 25s ease-in-out infinite;
+}
+
+.auth-page-container::after {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 60%);
+    bottom: -200px;
+    left: -200px;
+    border-radius: 50%;
+    animation: floatSlow 20s ease-in-out infinite reverse;
+}
+
+@keyframes floatSlow {
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    50% {
+        transform: translate(30px, -30px) scale(1.1);
+    }
+}
+
+.auth-card-wrapper {
+    background: white;
+    border-radius: var(--radius-2xl);
+    padding: 48px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: var(--shadow-2xl);
+    position: relative;
+    z-index: 1;
+}
+
+.auth-title {
+    font-size: 28px;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 8px;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--gray-500);
+    margin-bottom: 32px;
+    font-size: 15px;
+}
+
+.auth-submit-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--gradient-primary);
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    box-shadow: var(--shadow-primary);
+    transition: all var(--transition-normal);
+}
+
+.auth-submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 50px -10px rgba(249, 115, 22, 0.5);
+}
+
+.auth-google-btn {
+    width: 100%;
+    padding: 14px;
+    background: white;
+    color: var(--gray-700);
+    font-size: 15px;
+    font-weight: 600;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all var(--transition-normal);
+}
+
+.auth-google-btn:hover {
+    background: var(--gray-50);
+    border-color: var(--primary-400);
+}
+
+/* ============================================
+   PREMIUM ANIMATIONS
+   ============================================ */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-fadeInUp {
+    animation: fadeInUp 0.6s ease-out both;
+}
+
+.animate-slideInLeft {
+    animation: slideInLeft 0.6s ease-out both;
+}
+
+.animate-scaleIn {
+    animation: scaleIn 0.5s ease-out both;
+}
+
+.delay-100 {
+    animation-delay: 100ms;
+}
+
+.delay-200 {
+    animation-delay: 200ms;
+}
+
+.delay-300 {
+    animation-delay: 300ms;
+}
+
+.delay-400 {
+    animation-delay: 400ms;
+}
+
+.delay-500 {
+    animation-delay: 500ms;
+}

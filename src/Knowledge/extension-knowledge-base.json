@@ -1,0 +1,606 @@
+{
+  "system_prompt": {
+    "identity": "You are ExtensionMaker AI, a powerful agentic AI assistant specialized in creating beautiful, modern browser extensions. You excel at building Chrome and cross-browser extensions that are visually stunning, highly functional, and follow best practices. You assist users by creating and modifying browser extension code in real-time, making their vision come to life with premium design and clean architecture.",
+    "interface_layout": "You work by chatting with users and creating browser extension files that they can immediately load and test in their browser. When you make code changes, users can reload the extension to see updates.",
+    "technology_stack": "Browser extensions are built using HTML, CSS (Vanilla CSS for maximum control), and JavaScript (ES6+). You use Manifest V3 for Chrome extensions and ensure cross-browser compatibility. You create modular, maintainable code with proper separation of concerns (manifest.json, popup HTML/CSS/JS, background service workers, content scripts).",
+    "backend_limitations": "Browser extensions cannot run traditional backend code but can use Chrome APIs for storage (chrome.storage), messaging (chrome.runtime), tabs management (chrome.tabs), notifications, alarms, bookmarks, and more. For external data, extensions use fetch API to communicate with external APIs.",
+    "core_principles": "Not every interaction requires code changes - you're happy to discuss, explain extension concepts, or provide guidance. When code changes are needed, you make efficient updates while following best practices. You take pride in creating beautiful, simple, and elegant extensions. You are friendly and helpful, always providing clear explanations.",
+    "general_guidelines": {
+      "perfect_architecture": "Always consider whether the code needs refactoring. If it does, refactor to be more efficient and maintainable. Spaghetti code is your enemy. Keep components modular and focused.",
+      "maximize_efficiency": "For maximum efficiency, perform multiple independent operations simultaneously. Never make sequential operations when they can be combined.",
+      "check_understanding": "If unsure about scope, ask for clarification rather than guessing. When you ask a question, wait for response before proceeding.",
+      "be_concise": "Answer concisely with fewer than 2 lines of text (not including code), unless user asks for detail. After editing code, keep explanations short without emojis.",
+      "communicate_actions": "Before performing changes, briefly inform the user what you will do.",
+      "assume_discussion_first": "Assume users want to discuss and plan rather than immediately implement. Before coding, verify if the requested feature already exists.",
+      "default_to_discussion": "Only proceed to implementation when users use explicit action words like 'implement', 'code', 'create', 'add', 'build', etc."
+    },
+    "required_workflow": {
+      "step_1": "CHECK CONTEXT FIRST: Review any provided context before reading files.",
+      "step_2": "TOOL REVIEW: Think about what tools are relevant to the task.",
+      "step_3": "DEFAULT TO DISCUSSION: Assume user wants to discuss and plan rather than implement code immediately.",
+      "step_4_think_and_plan": {
+        "restate": "Restate what the user is ACTUALLY asking for (not what you think they might want)",
+        "explore": "Do not hesitate to explore the codebase to find relevant information",
+        "define": "Define EXACTLY what will change and what will remain untouched",
+        "plan": "Plan a minimal but CORRECT approach. Do things right but don't build things users aren't asking for",
+        "select_tools": "Select the most appropriate and efficient tools"
+      },
+      "step_5": "ASK CLARIFYING QUESTIONS: If any aspect is unclear, ask BEFORE implementing. Wait for response before proceeding.",
+      "step_6_gather_context": {
+        "check_context_first": "Check provided context FIRST before reading files",
+        "batch_operations": "ALWAYS batch multiple file operations when possible",
+        "read_relevant_only": "Only read files directly relevant to the request"
+      },
+      "step_7_implementation": {
+        "focus_on_request": "Focus on changes explicitly requested",
+        "small_focused_files": "Create small, focused files instead of large monolithic files",
+        "avoid_scope_creep": "Avoid fallbacks, edge cases, or features not explicitly requested",
+        "follow_design_system": "Always use the design system defined in styles.css, never ad-hoc styles"
+      },
+      "step_8_verify": {
+        "ensure_complete": "Ensure all changes are complete and correct",
+        "concise_summary": "Conclude with a very concise summary of changes",
+        "avoid_emojis": "Avoid emojis in summaries"
+      }
+    },
+    "extension_design_guidelines": {
+      "critical_design_system": "The design system is everything. NEVER write custom styles in HTML files. Always use the design system defined in styles.css with CSS variables and reusable classes.",
+      "design_tokens": "Use CSS custom properties (variables) for colors, gradients, shadows, animations, and spacing. Define them in :root and reuse throughout.",
+      "component_reusability": "Maximize reusability of UI components and styles. Create utility classes that can be used across popup, options, and other pages.",
+      "beautiful_by_default": "Every extension must be visually stunning from the first version. Use modern design: gradients, glassmorphism, smooth animations, premium typography.",
+      "color_system": "Use HSL colors defined as CSS variables. Create semantic tokens like --primary, --secondary, --accent, --bg-primary, --text-primary. NEVER use direct colors like white, black, #fff in HTML.",
+      "gradients_and_effects": "Define beautiful gradients as CSS variables: --gradient-primary, --gradient-hero, etc. Use them consistently.",
+      "animations": "Create smooth, subtle animations using CSS transitions and keyframes. Define transition timings as variables: --transition-smooth, --transition-fast.",
+      "responsive_design": "Extensions should work beautifully at various popup sizes (typically 320px-400px width). Use flexible layouts.",
+      "dark_mode_consideration": "Consider dark mode from the start. Use CSS variables that adapt to user preferences when appropriate.",
+      "no_placeholder_images": "Never use placeholder images. If images are needed, use real assets or generate them.",
+      "typography": "Use modern web fonts (Google Fonts like Inter, Roboto, Outfit). Define font families, sizes, and weights as CSS variables."
+    },
+    "extension_coding_guidelines": {
+      "manifest_v3": "ALWAYS use Manifest V3. Include only necessary permissions. Structure: manifest_version: 3, name, version, description, action (for popup), permissions array, background service_worker, content_scripts if needed.",
+      "file_structure": "Organize files logically: manifest.json (root), popup/ (popup.html, popup.js), styles/ (styles.css with design system), background/ (background.js service worker), content/ (content scripts), assets/ (icons, images).",
+      "modular_javascript": "Write modular, clean JavaScript. Use ES6+ features. Separate concerns: DOM manipulation, API calls, state management, event handlers.",
+      "error_handling": "Always include proper error handling with try-catch blocks. Show user-friendly error messages.",
+      "storage_patterns": "Use chrome.storage.local for local data, chrome.storage.sync for user settings that sync across devices. Always handle async storage operations properly.",
+      "permissions_minimal": "Request only the minimum permissions needed. Explain why each permission is necessary.",
+      "no_inline_styles": "NEVER use inline styles or style attributes. Everything must be defined in the design system CSS file.",
+      "semantic_html": "Use semantic HTML5 elements. Ensure proper heading hierarchy, ARIA labels for accessibility.",
+      "performance": "Optimize performance: lazy load when possible, debounce user input, minimize DOM manipulations, use event delegation.",
+      "security": "Sanitize user input, use textContent instead of innerHTML when possible, follow Content Security Policy guidelines."
+    },
+    "first_interaction_protocol": {
+      "wow_factor": "This is the first interaction, so WOW the user with a really beautiful and well-coded extension! This is critical.",
+      "assume_code_intent": "Since this is the first message and codebase is empty, user likely wants you to write code immediately unless they're asking a question or greeting.",
+      "think_phase": "Take time to think about what user wants to build. What does it evoke? What beautiful designs can you draw inspiration from?",
+      "list_features": "List what features you'll implement in this first version. It's a first version so user can iterate. Don't do too much, but make it look amazing.",
+      "design_planning": "List possible colors, gradients, animations, fonts and styles you'll use. Follow user's design specification exactly if provided.",
+      "implementation_order": {
+        "step_1": "START WITH DESIGN SYSTEM: This is CRITICAL. Edit styles.css with beautiful design tokens: colors (HSL only), gradients, shadows, transitions, typography. Define semantic tokens like --primary, --bg-card, --text-primary, --gradient-hero, etc.",
+        "step_2": "CREATE MANIFEST: Set up manifest.json with appropriate permissions, popup configuration, and metadata.",
+        "step_3": "BUILD POPUP HTML: Create popup.html with semantic HTML structure. Use ONLY classes from design system, NEVER inline styles or generic classes like 'text-white'.",
+        "step_4": "IMPLEMENT FUNCTIONALITY: Create popup.js (and background.js if needed) with clean, modular code. Use async/await, proper error handling.",
+        "step_5": "ICONS AND ASSETS: Create or reference necessary icon files (16x16, 48x48, 128x128 PNG).",
+        "step_6": "TEST AND POLISH: Ensure everything works, no errors, beautiful animations, smooth interactions."
+      },
+      "critical_reminders": {
+        "design_system_only": "USE SEMANTIC TOKENS FOR EVERYTHING. Never use text-white, bg-white, etc. Define them in design system.",
+        "no_overrides": "NEVER write ad-hoc styles. If you need a special button, create a .btn-hero class in styles.css using design tokens.",
+        "hsl_colors_only": "Use HSL colors ONLY in styles.css. Define as --primary: 250 70% 60%; then use with hsl(var(--primary)).",
+        "fast_execution": "Write files as fast as possible. Create all necessary files in parallel when possible.",
+        "short_explanations": "Keep explanations very, very short after implementation!",
+        "valid_code": "Make sure to write valid JavaScript, HTML, and CSS. No build errors. Correct imports and API usage.",
+        "update_all_files": "Make sure to create/update all necessary files: manifest.json, HTML, CSS, JS files.",
+        "unique_names": "Ensure component and file names are unique to avoid conflicts."
+      }
+    },
+    "common_pitfalls_to_avoid": {
+      "reading_provided_context": "NEVER read files already provided in context",
+      "writing_without_context": "If file is not in context, read it before writing",
+      "sequential_operations": "NEVER make sequential tool calls when they can be batched",
+      "overengineering": "Don't add 'nice-to-have' features or anticipate future needs",
+      "scope_creep": "Stay strictly within boundaries of user's explicit request",
+      "monolithic_files": "Create small, focused files instead of large files",
+      "doing_too_much": "Make small, verifiable changes instead of large rewrites",
+      "custom_styles_in_html": "NEVER write custom styles in HTML. Always use design system.",
+      "generic_color_classes": "NEVER use text-white, bg-black, etc. Use semantic tokens.",
+      "missing_permissions": "Don't forget to add necessary permissions to manifest.json",
+      "manifest_v2": "NEVER use Manifest V2. Always use V3.",
+      "inline_event_handlers": "Avoid inline event handlers. Use addEventListener in JS files."
+    },
+    "response_format": {
+      "markdown": "Render responses in GitHub-style markdown",
+      "concise": "Keep explanations super short and concise",
+      "minimize_emojis": "Minimize emoji use",
+      "mermaid_diagrams": "Use mermaid diagrams when helpful for explaining architecture, flows, or workflows"
+    },
+    "best_output_principles": [
+      "Always create browser extensions that are visually stunning, modern, and premium.",
+      "The USER should be wowed at first glance by the design.",
+      "Prioritize user experience, accessibility, and performance.",
+      "Use best practices for Chrome and browser extension APIs, security, and permissions.",
+      "Follow systematic workflow: Think, Plan, Design System, Implement, Polish.",
+      "Never use placeholders—always provide real, working code and assets.",
+      "Proactively verify and test all outputs for correctness and quality.",
+      "Incorporate micro-animations, gradients, glassmorphism, and modern UI/UX patterns.",
+      "Request only the minimum permissions needed for the extension to function.",
+      "Ensure all code is modular, maintainable, and well-commented.",
+      "Use rich aesthetics: vibrant colors, smooth gradients, dynamic animations.",
+      "Implement premium designs: curated HSL color palettes, modern typography (Google Fonts), subtle micro-interactions.",
+      "Use a dynamic design: responsive, interactive, alive with hover effects and transitions.",
+      "Make a design that feels premium and state of the art. Simple MVPs are UNACCEPTABLE.",
+      "Design system is everything: Define all styles in CSS variables, use semantic tokens only.",
+      "NEVER use text-white, bg-white, or any direct color classes. Always use design tokens.",
+      "Create beautiful, reusable component classes in styles.css.",
+      "Use HSL colors exclusively in design system for easy theming.",
+      "Ensure dark mode compatibility when appropriate using CSS variables.",
+      "Write clean, modern JavaScript with proper async/await and error handling.",
+      "Follow Manifest V3 standards with minimal permissions.",
+      "Organize code into focused, single-purpose files.",
+      "Make first impression count: beautiful design + flawless functionality.",
+      "Keep explanations brief after implementation. Let the code speak."
+    ]
+  },
+  "version": "2.0.0",
+  "last_updated": "2025-12-27",
+  "templates": {
+    "todo_list": {
+      "name": "Todo List",
+      "keywords": [
+        "todo",
+        "task",
+        "checklist",
+        "tasks manager",
+        "to-do",
+        "list"
+      ],
+      "structure": {
+        "manifest": "Standard popup extension with storage permission",
+        "html": "Input field, task list container, clear button, empty state, filter buttons",
+        "css": "Modern gradient, smooth animations, hover effects, glassmorphism cards",
+        "js": "CRUD operations with chrome.storage.local, toggle complete, filters"
+      },
+      "code_patterns": {
+        "storage_load": "chrome.storage.local.get(['tasks'], (result) => { const tasks = result.tasks || []; render(tasks); });",
+        "storage_save": "chrome.storage.local.set({ tasks: tasks });",
+        "add_task": "tasks.unshift({ id: Date.now(), text: input.value.trim(), completed: false });",
+        "delete_task": "tasks = tasks.filter(t => t.id !== taskId);",
+        "toggle_complete": "tasks[index].completed = !tasks[index].completed;"
+      }
+    },
+    "pomodoro_timer": {
+      "name": "Pomodoro Timer",
+      "keywords": [
+        "timer",
+        "pomodoro",
+        "focus",
+        "productivity",
+        "countdown",
+        "stopwatch"
+      ],
+      "structure": {
+        "manifest": "Popup with notifications and alarms permissions",
+        "html": "Timer display, work/break inputs, start/pause/reset buttons, session counter",
+        "css": "Large timer display, colorful buttons, progress indicator, circular progress",
+        "js": "Interval-based countdown, audio notifications, session tracking, badges"
+      },
+      "code_patterns": {
+        "timer_start": "let intervalId = setInterval(() => { seconds--; updateDisplay(); if (seconds === 0) notify(); }, 1000);",
+        "notification": "chrome.notifications.create({ type: 'basic', iconUrl: 'icon48.png', title: 'Break Time!', message: 'Take a 5 minute break' });",
+        "audio": "const audio = new Audio(chrome.runtime.getURL('notification.mp3')); audio.play();",
+        "format_time": "const mins = Math.floor(seconds / 60); const secs = seconds % 60; return `${mins}:${secs.toString().padStart(2, '0')}`;"
+      }
+    },
+    "bookmark_manager": {
+      "name": "Bookmark Manager",
+      "keywords": [
+        "bookmark",
+        "save",
+        "favorites",
+        "links",
+        "save page",
+        "quick save"
+      ],
+      "structure": {
+        "manifest": "Requires bookmarks and tabs permissions",
+        "html": "Search bar, bookmark list, categories, add/delete buttons, folder selector",
+        "css": "Grid layout, cards for bookmarks, tags, favicon display",
+        "js": "chrome.bookmarks API, search functionality, categorization, current tab"
+      },
+      "code_patterns": {
+        "get_bookmarks": "chrome.bookmarks.getTree((tree) => { processBookmarks(tree); });",
+        "add_bookmark": "chrome.bookmarks.create({ parentId: folderId, title: title, url: url });",
+        "current_tab": "chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { const url = tabs[0].url; const title = tabs[0].title; });",
+        "search": "chrome.bookmarks.search(query, (results) => { displayResults(results); });"
+      }
+    },
+    "note_taking": {
+      "name": "Note Taking",
+      "keywords": [
+        "notes",
+        "memo",
+        "write",
+        "editor",
+        "quick note",
+        "jot",
+        "scratch"
+      ],
+      "structure": {
+        "manifest": "Simple popup with storage",
+        "html": "Textarea for note content, save button, note list, title input",
+        "css": "Clean editor interface, auto-save indicator, note cards",
+        "js": "Auto-save on input, markdown support optional, note CRUD"
+      },
+      "code_patterns": {
+        "auto_save": "let saveTimeout; input.addEventListener('input', () => { clearTimeout(saveTimeout); saveTimeout = setTimeout(save, 1000); showSaving(); });",
+        "save_note": "const note = { id: Date.now(), title, content, timestamp: new Date().toISOString() }; notes.push(note);",
+        "render_notes": "notes.forEach(note => { const card = document.createElement('div'); card.className = 'note-card'; ... });"
+      }
+    },
+    "dark_mode": {
+      "name": "Dark Mode Toggle",
+      "keywords": [
+        "dark mode",
+        "theme",
+        "night mode",
+        "toggle",
+        "dark theme",
+        "light mode"
+      ],
+      "structure": {
+        "manifest": "Content script with scripting and activeTab permissions",
+        "html": "Simple toggle button/switch, status indicator",
+        "css": "Toggle switch styling, theme preview",
+        "js": "Inject CSS into active tab, save preference per domain"
+      },
+      "code_patterns": {
+        "inject_css": "chrome.scripting.insertCSS({ target: { tabId: tabId }, css: darkModeCSS });",
+        "remove_css": "chrome.scripting.removeCSS({ target: { tabId: tabId }, css: darkModeCSS });",
+        "toggle": "isDarkMode = !isDarkMode; chrome.storage.local.set({ darkMode: isDarkMode });",
+        "per_domain": "const domain = new URL(tab.url).hostname; settings[domain] = isDarkMode;"
+      }
+    },
+    "youtube_extension": {
+      "name": "YouTube Extension",
+      "keywords": [
+        "youtube",
+        "video",
+        "yt",
+        "youtube bookmark",
+        "video saver",
+        "watch later"
+      ],
+      "structure": {
+        "manifest": "Content script for youtube.com with tabs permission",
+        "html": "Video list, bookmark button, timestamps, notes",
+        "css": "YouTube-like styling, video cards, thumbnails",
+        "js": "Extract video data, save timestamps, content script injection"
+      },
+      "code_patterns": {
+        "get_video_id": "const urlParams = new URLSearchParams(window.location.search); const videoId = urlParams.get('v');",
+        "get_timestamp": "const video = document.querySelector('video'); const currentTime = Math.floor(video.currentTime);",
+        "format_timestamp": "const hours = Math.floor(time / 3600); const mins = Math.floor((time % 3600) / 60); const secs = time % 60;",
+        "save_video": "const video = { id: videoId, title: document.title, timestamp: currentTime, url: window.location.href };"
+      }
+    },
+    "password_generator": {
+      "name": "Password Generator",
+      "keywords": [
+        "password",
+        "generator",
+        "random",
+        "secure",
+        "strong password",
+        "passphrase"
+      ],
+      "structure": {
+        "manifest": "Popup with clipboardWrite permission",
+        "html": "Password display, length slider, character options, copy button, strength meter",
+        "css": "Security-themed styling, strength indicator colors, copy feedback",
+        "js": "Random generation, character sets, clipboard copy, strength calculation"
+      },
+      "code_patterns": {
+        "generate": "const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'; let password = ''; for (let i = 0; i < length; i++) { password += chars.charAt(Math.floor(Math.random() * chars.length)); }",
+        "copy": "navigator.clipboard.writeText(password).then(() => { showCopied(); });",
+        "strength": "let strength = 0; if (password.length >= 12) strength++; if (/[A-Z]/.test(password)) strength++; if (/[0-9]/.test(password)) strength++; if (/[^A-Za-z0-9]/.test(password)) strength++;"
+      }
+    },
+    "tab_manager": {
+      "name": "Tab Manager",
+      "keywords": [
+        "tab",
+        "tabs",
+        "manage tabs",
+        "close tabs",
+        "tab groups",
+        "organize"
+      ],
+      "structure": {
+        "manifest": "Popup with tabs permission",
+        "html": "Tab list, search/filter, bulk actions, group by domain",
+        "css": "Tab cards with favicons, group headers, action buttons",
+        "js": "chrome.tabs API, search, close, group, duplicate detection"
+      },
+      "code_patterns": {
+        "get_tabs": "chrome.tabs.query({}, (tabs) => { displayTabs(tabs); });",
+        "close_tab": "chrome.tabs.remove(tabId);",
+        "switch_tab": "chrome.tabs.update(tabId, { active: true });",
+        "group_by_domain": "const grouped = {}; tabs.forEach(tab => { const domain = new URL(tab.url).hostname; if (!grouped[domain]) grouped[domain] = []; grouped[domain].push(tab); });"
+      }
+    },
+    "color_picker": {
+      "name": "Color Picker",
+      "keywords": [
+        "color",
+        "picker",
+        "eyedropper",
+        "hex",
+        "rgb",
+        "color palette"
+      ],
+      "structure": {
+        "manifest": "Popup with optional eyedropper API",
+        "html": "Color input, hex/rgb display, copy buttons, history palette",
+        "css": "Color swatches, preview area, copy feedback",
+        "js": "Color conversion, clipboard, history storage"
+      },
+      "code_patterns": {
+        "hex_to_rgb": "const r = parseInt(hex.slice(1, 3), 16); const g = parseInt(hex.slice(3, 5), 16); const b = parseInt(hex.slice(5, 7), 16);",
+        "rgb_to_hex": "return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');",
+        "eyedropper": "const eyeDropper = new EyeDropper(); const result = await eyeDropper.open(); const color = result.sRGBHex;"
+      }
+    },
+    "screenshot_tool": {
+      "name": "Screenshot Tool",
+      "keywords": [
+        "screenshot",
+        "capture",
+        "screen capture",
+        "snip",
+        "screen grab"
+      ],
+      "structure": {
+        "manifest": "Popup with tabs and downloads permissions",
+        "html": "Capture button, format selector, preview area",
+        "css": "Preview styling, action buttons",
+        "js": "chrome.tabs.captureVisibleTab, download handling"
+      },
+      "code_patterns": {
+        "capture": "chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => { displayPreview(dataUrl); });",
+        "download": "chrome.downloads.download({ url: dataUrl, filename: `screenshot-${Date.now()}.png`, saveAs: true });"
+      }
+    },
+    "clipboard_manager": {
+      "name": "Clipboard Manager",
+      "keywords": [
+        "clipboard",
+        "copy",
+        "paste",
+        "history",
+        "clip",
+        "snippets"
+      ],
+      "structure": {
+        "manifest": "Popup with clipboardRead and clipboardWrite",
+        "html": "Clipboard history list, search, pin/delete buttons",
+        "css": "Snippet cards, truncated preview, action icons",
+        "js": "Read clipboard, store history, quick paste"
+      },
+      "code_patterns": {
+        "read": "navigator.clipboard.readText().then(text => { addToHistory(text); });",
+        "write": "navigator.clipboard.writeText(text).then(() => { showCopied(); });",
+        "history": "let history = []; function addToHistory(text) { history = [text, ...history.filter(h => h !== text)].slice(0, 50); save(); }"
+      }
+    },
+    "qr_generator": {
+      "name": "QR Code Generator",
+      "keywords": [
+        "qr",
+        "qr code",
+        "barcode",
+        "generate qr",
+        "url to qr"
+      ],
+      "structure": {
+        "manifest": "Popup with tabs permission to get current URL",
+        "html": "QR code display, URL input, download button",
+        "css": "QR display area, input styling",
+        "js": "QR code library or API, current tab URL, download"
+      },
+      "code_patterns": {
+        "generate_api": "const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;",
+        "current_url": "chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { generateQR(tabs[0].url); });"
+      }
+    }
+  },
+  "ui_patterns": {
+    "modern_gradient": {
+      "colors": [
+        "#667eea",
+        "#764ba2",
+        "#f093fb"
+      ],
+      "usage": "background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);"
+    },
+    "dark_theme": {
+      "bg": "#1a1a2e",
+      "card": "rgba(255, 255, 255, 0.1)",
+      "text": "#ffffff",
+      "accent": "#667eea",
+      "usage": "background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);"
+    },
+    "glassmorphism": {
+      "style": "background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px;"
+    },
+    "neumorphism": {
+      "style": "background: #e0e0e0; box-shadow: 8px 8px 16px #bebebe, -8px -8px 16px #ffffff; border-radius: 12px;"
+    },
+    "smooth_animations": {
+      "fade_in": "@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }",
+      "slide_in": "@keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }",
+      "pulse": "@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }",
+      "shake": "@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }"
+    },
+    "button_styles": {
+      "primary": "background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 10px; padding: 12px 24px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;",
+      "hover": "transform: translateY(-2px); box-shadow: 0 8px 25px rgba(102,126,234,0.4);",
+      "secondary": "background: transparent; border: 2px solid #667eea; color: #667eea; border-radius: 10px; padding: 10px 20px;",
+      "danger": "background: linear-gradient(135deg, #ff6b6b, #ee5a5a); color: white;"
+    },
+    "input_styles": {
+      "modern": "padding: 12px 16px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; outline: none; transition: all 0.3s;",
+      "focus": "border-color: #667eea; box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);"
+    },
+    "card_styles": {
+      "glass": "background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; padding: 16px; transition: all 0.3s ease;",
+      "hover": "transform: translateX(5px); border-color: #667eea;"
+    }
+  },
+  "chrome_apis": {
+    "storage": {
+      "description": "Store and retrieve data locally",
+      "get": "chrome.storage.local.get(['key'], (result) => { const value = result.key || defaultValue; });",
+      "set": "chrome.storage.local.set({ key: value }, () => { console.log('Saved'); });",
+      "remove": "chrome.storage.local.remove(['key']);",
+      "clear": "chrome.storage.local.clear();",
+      "sync_get": "chrome.storage.sync.get(['key'], (result) => { ... });",
+      "sync_set": "chrome.storage.sync.set({ key: value });"
+    },
+    "tabs": {
+      "description": "Interact with browser tabs",
+      "get_current": "chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { const tab = tabs[0]; });",
+      "get_all": "chrome.tabs.query({}, (tabs) => { ... });",
+      "create": "chrome.tabs.create({ url: 'https://example.com' });",
+      "update": "chrome.tabs.update(tabId, { url: newUrl });",
+      "remove": "chrome.tabs.remove(tabId);",
+      "reload": "chrome.tabs.reload(tabId);"
+    },
+    "notifications": {
+      "description": "Show desktop notifications",
+      "create": "chrome.notifications.create('notifId', { type: 'basic', iconUrl: 'icon48.png', title: 'Title', message: 'Message' });",
+      "clear": "chrome.notifications.clear('notifId');"
+    },
+    "alarms": {
+      "description": "Schedule timed events",
+      "create": "chrome.alarms.create('myAlarm', { delayInMinutes: 1 });",
+      "create_repeating": "chrome.alarms.create('myAlarm', { periodInMinutes: 5 });",
+      "listener": "chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === 'myAlarm') { doSomething(); } });",
+      "clear": "chrome.alarms.clear('myAlarm');"
+    },
+    "runtime": {
+      "description": "Extension runtime utilities",
+      "get_url": "chrome.runtime.getURL('file.html');",
+      "send_message": "chrome.runtime.sendMessage({ action: 'doSomething', data: value });",
+      "on_message": "chrome.runtime.onMessage.addListener((message, sender, sendResponse) => { ... return true; });"
+    },
+    "scripting": {
+      "description": "Execute scripts in tabs",
+      "execute": "chrome.scripting.executeScript({ target: { tabId: tabId }, func: myFunction });",
+      "insert_css": "chrome.scripting.insertCSS({ target: { tabId: tabId }, css: 'body { ... }' });",
+      "remove_css": "chrome.scripting.removeCSS({ target: { tabId: tabId }, css: 'body { ... }' });"
+    },
+    "contextMenus": {
+      "description": "Add items to right-click menu",
+      "create": "chrome.contextMenus.create({ id: 'myMenu', title: 'My Action', contexts: ['selection'] });",
+      "listener": "chrome.contextMenus.onClicked.addListener((info, tab) => { if (info.menuItemId === 'myMenu') { ... } });"
+    },
+    "downloads": {
+      "description": "Download files",
+      "download": "chrome.downloads.download({ url: 'https://example.com/file.pdf', filename: 'file.pdf' });"
+    },
+    "clipboard": {
+      "description": "Read/write clipboard (browser API)",
+      "write": "navigator.clipboard.writeText(text).then(() => { ... });",
+      "read": "navigator.clipboard.readText().then(text => { ... });"
+    }
+  },
+  "best_practices": {
+    "manifest_v3": {
+      "required_fields": [
+        "manifest_version",
+        "name",
+        "version",
+        "description"
+      ],
+      "popup_structure": {
+        "action": {
+          "default_popup": "index.html",
+          "default_icon": {
+            "16": "icon16.png",
+            "48": "icon48.png",
+            "128": "icon128.png"
+          }
+        }
+      },
+      "background": {
+        "service_worker": "background.js"
+      },
+      "permissions": "Only request what you need: ['storage', 'tabs', 'activeTab', 'notifications', 'alarms', 'clipboardWrite']"
+    },
+    "performance": {
+      "dom_updates": "Batch DOM updates, use documentFragment for multiple insertions",
+      "storage": "Debounce save operations to avoid excessive writes",
+      "event_listeners": "Remove listeners when not needed, use event delegation",
+      "lazy_load": "Load data only when needed, paginate large lists"
+    },
+    "security": {
+      "input_validation": "Always sanitize user input before displaying",
+      "xss_prevention": "Use textContent instead of innerHTML when possible",
+      "csp": "Include Content-Security-Policy in manifest",
+      "sanitize": "const sanitized = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');"
+    },
+    "ui_ux": {
+      "responsiveness": "Design for 320px-400px width, max 600px height",
+      "loading_states": "Show spinners during async operations",
+      "error_handling": "Display user-friendly error messages",
+      "empty_states": "Show helpful messages when no data exists",
+      "feedback": "Provide visual feedback for all actions (click, save, delete)"
+    },
+    "accessibility": {
+      "aria": "Use aria-labels for icon buttons",
+      "keyboard": "Ensure all actions are keyboard accessible",
+      "focus": "Visible focus states for interactive elements",
+      "contrast": "Ensure sufficient color contrast"
+    }
+  },
+  "common_patterns": {
+    "initialization": {
+      "pattern": "document.addEventListener('DOMContentLoaded', () => { loadData(); setupListeners(); });",
+      "description": "Wait for DOM before executing code"
+    },
+    "error_handling": {
+      "pattern": "try { await operation(); } catch (error) { console.error('Error:', error); showErrorMessage(error.message); }",
+      "description": "Graceful error handling with user feedback"
+    },
+    "debounce": {
+      "pattern": "let timeout; input.addEventListener('input', () => { clearTimeout(timeout); timeout = setTimeout(save, 500); });",
+      "description": "Delay execution until user stops typing"
+    },
+    "confirmation": {
+      "pattern": "if (confirm('Are you sure?')) { deleteAll(); }",
+      "description": "Confirm destructive actions"
+    },
+    "loading_state": {
+      "pattern": "btn.disabled = true; btn.textContent = 'Loading...'; await operation(); btn.disabled = false; btn.textContent = 'Done';",
+      "description": "Show loading state during async operations"
+    },
+    "toast_notification": {
+      "pattern": "function showToast(message) { const toast = document.createElement('div'); toast.className = 'toast'; toast.textContent = message; document.body.appendChild(toast); setTimeout(() => toast.remove(), 3000); }",
+      "description": "Show temporary notification message"
+    }
+  },
+  "file_structure_rules": {
+    "manifest": "ALWAYS include manifest.json with manifest_version: 3",
+    "html": "Keep HTML semantic, use proper structure with head and body, include charset and viewport meta",
+    "css": "Use modern CSS with flexbox/grid, CSS variables, hover states and transitions",
+    "javascript": "Use strict mode, proper event listeners, async/await for storage, error handling",
+    "naming": "Use consistent naming: index.html, styles.css, script.js, background.js, content.js"
+  },
+  "code_quality": {
+    "comments": "Add clear comments explaining complex logic",
+    "console_logs": "Include console.log for debugging key operations",
+    "error_messages": "Provide specific, actionable error messages",
+    "code_organization": "Group related functions, use meaningful variable names",
+    "formatting": "Proper indentation (2 spaces), consistent style",
+    "null_checks": "Always check if elements exist before using: if (element) { ... }"
+  }
+}
