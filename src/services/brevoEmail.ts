@@ -38,6 +38,11 @@ export async function sendBulkEmails(options: SendBulkEmailOptions) {
     body: JSON.stringify(options)
   });
 
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('API route /api/brevo-send is not running. If running locally, please use vercel dev.');
+  }
+
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload?.error || 'Failed to send campaign emails');
@@ -64,6 +69,12 @@ export async function fetchCampaignInbox(userId: string, projectId?: string | nu
   }
 
   const response = await fetch(`/api/brevo-inbox?${params.toString()}`);
+  
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('API route /api/brevo-inbox is not running. If running locally, please use vercel dev.');
+  }
+
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload?.error || 'Failed to load campaign inbox');

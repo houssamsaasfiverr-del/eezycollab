@@ -1,3 +1,5 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 export type SocialPlatform = 'YouTube' | 'Instagram' | 'TikTok';
 
 export interface CreatorProfile {
@@ -169,4 +171,51 @@ export function profileMeta(profile: CreatorProfile): string {
   }
 
   return followers !== 'N/A' ? `${followers} followers` : 'Public profile data';
+}
+
+export async function fetchAIRecommendations(platform: SocialPlatform, description: string, hashtags: string): Promise<CreatorProfile[]> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) return [];
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  const prompt = `You are an influencer marketing expert. Recommend 6 real ${platform} influencers for a campaign with this description: "${description}" and hashtags: "${hashtags}".
+Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@username"), "displayName", "bio" (short 1-sentence description), "followers" (estimated number). Do not include markdown formatting or backticks.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const data = JSON.parse(cleanText);
+
+    return data.map((item: any, index: number) => ({
+      id: `ai-rec-${index}-${Date.now()}`,
+      platform: platform,
+      handle: item.handle,
+      displayName: item.displayName || item.handle,
+      bio: item.bio,
+      followers: typeof item.followers === 'number' ? item.followers : parseInt(String(item.followers).replace(/[^0-9]/g, '')) || 0,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.displayName || item.handle)}&background=random&color=fff&size=150`,
+      profileUrl: platform === 'YouTube' ? `https://youtube.com/${item.handle}` :
+                  platform === 'TikTok' ? `https://tiktok.com/${item.handle}` :
+                  `https://instagram.com/${String(item.handle).replace('@', '')}`
+    }));
+  } catch (error) {
+    console.error('AI recommendation error:', error);
+    return [];
+  }
+}
+
+export async function autoRecommendCreators(platform: SocialPlatform, description: string, hashtags: string): Promise<CreatorProfile[]> {
+  if (platform === 'YouTube') {
+    const query = hashtags.trim().split(',').join(' ') || description || 'tech review';
+    try {
+      const results = await fetchYoutubeCreators(query);
+      if (results.length > 0) return results;
+    } catch (e) {
+      console.error('YouTube search failed, falling back to AI', e);
+    }
+  }
+  return fetchAIRecommendations(platform, description, hashtags);
 }

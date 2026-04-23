@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { CreatorProfile, fetchCreatorProfiles, profileMeta } from '../services/creatorDataService';
+import { CreatorProfile, fetchCreatorProfiles, profileMeta, autoRecommendCreators } from '../services/creatorDataService';
 import {
   CampaignEmailLog,
   fetchCampaignInbox,
@@ -73,7 +73,6 @@ export default function Builder() {
   const [hasEmail, setHasEmail] = useState(true);
   const [hashtags, setHashtags] = useState('');
   const [influencerInput, setInfluencerInput] = useState('');
-  const [creatorQuery, setCreatorQuery] = useState('');
   const [creatorResults, setCreatorResults] = useState<CreatorProfile[]>([]);
   const [creatorLoading, setCreatorLoading] = useState(false);
   const [creatorError, setCreatorError] = useState('');
@@ -190,6 +189,31 @@ export default function Builder() {
     }
   }, [searchParams]);
 
+  const handleAutoRecommend = async () => {
+    setCreatorError('');
+    setCreatorLoading(true);
+    setCreatorResults([]);
+
+    try {
+      const results = await autoRecommendCreators(platform, productDescription, hashtags);
+      if (results.length === 0) {
+        setCreatorError('No recommendations found. Try adding more specific hashtags or product description.');
+      }
+      setCreatorResults(results);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Recommendation lookup failed';
+      setCreatorError(message);
+    } finally {
+      setCreatorLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (step === 3 && creatorResults.length === 0 && !creatorLoading) {
+      handleAutoRecommend();
+    }
+  }, [step]);
+
   const parsedInfluencers = useMemo(
     () => influencerInput.split('\n').map((line) => line.trim()).filter(Boolean),
     [influencerInput]
@@ -222,32 +246,9 @@ export default function Builder() {
   const nextStep = () => setStep((prev) => (prev < 5 ? ((prev + 1) as StepId) : prev));
   const prevStep = () => setStep((prev) => (prev > 1 ? ((prev - 1) as StepId) : prev));
 
-  const handleCreatorLookup = async () => {
-    setCreatorError('');
-    setCreatorResults([]);
-
-    if (!creatorQuery.trim()) {
-      setCreatorError('Enter a creator handle or URL first.');
-      return;
-    }
-
-    setCreatorLoading(true);
-    try {
-      const results = await fetchCreatorProfiles(platform, creatorQuery.trim());
-      if (results.length === 0) {
-        setCreatorError('No creators found. Try another handle or URL.');
-      }
-      setCreatorResults(results);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Creator lookup failed';
-      setCreatorError(message);
-    } finally {
-      setCreatorLoading(false);
-    }
-  };
-
   const addToShortlist = (profile: CreatorProfile) => {
     const current = influencerInput
+
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
@@ -555,20 +556,14 @@ export default function Builder() {
 
           {step === 3 && (
             <div className="ec-step-card">
-              <h2>Shortlist influencers</h2>
-              <p>Search creators using platform APIs, then add handles to your shortlist.</p>
-
-              <div className="ec-lookup-row">
-                <input
-                  value={creatorQuery}
-                  onChange={(event) => setCreatorQuery(event.target.value)}
-                  placeholder={platform === 'YouTube' ? '@mkbhd or tech review channel' : 'Profile/video URL or @handle'}
-                />
-                <button type="button" onClick={handleCreatorLookup} disabled={creatorLoading}>
-                  {creatorLoading ? <Loader2 size={15} className="spin" /> : <Search size={15} />}
-                  {creatorLoading ? 'Searching...' : `Find on ${platform}`}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2>Recommended Influencers</h2>
+                <button type="button" onClick={handleAutoRecommend} disabled={creatorLoading} className="ec-refresh-btn" style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px', background: '#fff', border: '1px solid #e8d8c7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {creatorLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                  {creatorLoading ? 'Generating...' : 'Refresh Recommendations'}
                 </button>
               </div>
+              <p>Based on your campaign details, here are some suggested {platform} creators to shortlist.</p>
 
               {creatorError && <div className="ec-lookup-error">{creatorError}</div>}
 
