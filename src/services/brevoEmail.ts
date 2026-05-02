@@ -8,6 +8,7 @@ export interface SendBulkEmailOptions {
   projectId?: string | null;
   senderEmail?: string;
   senderName?: string;
+  deliveryMethod?: 'project' | 'user_smtp';
   subject: string;
   messageTemplate: string;
   recipients: CampaignRecipient[];

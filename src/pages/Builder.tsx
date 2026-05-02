@@ -1,27 +1,42 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Mail,
   MessageSquare,
   Search,
   Send,
+  Settings,
   Sparkles,
-  Users
-} from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabaseClient';
-import { CreatorProfile, fetchCreatorProfiles, profileMeta, autoRecommendCreators } from '../services/creatorDataService';
+  Users,
+  X,
+} from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabaseClient";
+import {
+  CreatorProfile,
+  profileMeta,
+  autoRecommendCreators,
+} from "../services/creatorDataService";
 import {
   CampaignEmailLog,
   fetchCampaignInbox,
   parseRecipientList,
-  sendBulkEmails
-} from '../services/brevoEmail';
+  sendBulkEmails,
+} from "../services/brevoEmail";
+import {
+  fetchUserSmtpConfig,
+  saveUserSmtpConfig,
+} from "../services/userSmtpConfig";
+import InfluencerFilters, {
+  FilterState,
+} from "../components/InfluencerFilters";
 
 type StepId = 1 | 2 | 3 | 4 | 5;
 
@@ -33,7 +48,7 @@ interface UserCredits {
 interface BuilderDraft {
   productDescription: string;
   productUrl: string;
-  platform: 'YouTube' | 'TikTok' | 'Instagram';
+  platform: "YouTube" | "TikTok" | "Instagram";
   language: string;
   discoverCount: number;
   regions: string[];
@@ -45,14 +60,14 @@ interface BuilderDraft {
 }
 
 const defaultOutreachTemplate =
-  'Hi {{name}},\n\nWe are launching a new campaign and would love to collaborate with you. If you are open, I can share the full brief and timelines.\n\nBest,\nCollabFree Team';
+  "Hi {{name}},\n\nWe are launching a new campaign and would love to collaborate with you. If you are open, I can share the full brief and timelines.\n\nBest,\nCollabFree Team";
 
 const stepLabels: Array<{ id: StepId; label: string }> = [
-  { id: 1, label: 'Set Up' },
-  { id: 2, label: 'Add Hashtags' },
-  { id: 3, label: 'Shortlist Influencers' },
-  { id: 4, label: 'Contact All' },
-  { id: 5, label: 'Check Replies' }
+  { id: 1, label: "Set Up" },
+  { id: 2, label: "Add Hashtags" },
+  { id: 3, label: "Shortlist Influencers" },
+  { id: 4, label: "Contact All" },
+  { id: 5, label: "Check Replies" },
 ];
 
 export default function Builder() {
@@ -61,47 +76,174 @@ export default function Builder() {
   const { user } = useAuth();
 
   const [step, setStep] = useState<StepId>(1);
-  const [credits, setCredits] = useState<UserCredits>({ credits: 0, maxCredits: 0 });
+  const [credits, setCredits] = useState<UserCredits>({
+    credits: 0,
+    maxCredits: 0,
+  });
 
-  const [productDescription, setProductDescription] = useState('');
-  const [productUrl, setProductUrl] = useState('');
-  const [platform, setPlatform] = useState<'YouTube' | 'TikTok' | 'Instagram'>('YouTube');
-  const [language, setLanguage] = useState('English');
+  const [productDescription, setProductDescription] = useState("");
+  const [productUrl, setProductUrl] = useState("");
+  const [platform, setPlatform] = useState<"YouTube" | "TikTok" | "Instagram">(
+    "YouTube",
+  );
+  const [language, setLanguage] = useState("English");
   const [discoverCount, setDiscoverCount] = useState(20);
   const [regions, setRegions] = useState<string[]>([]);
   const [followerRange, setFollowerRange] = useState(50000);
   const [hasEmail, setHasEmail] = useState(true);
-  const [hashtags, setHashtags] = useState('');
-  const [influencerInput, setInfluencerInput] = useState('');
+  const [hashtags, setHashtags] = useState("");
+  const [influencerInput, setInfluencerInput] = useState("");
   const [creatorResults, setCreatorResults] = useState<CreatorProfile[]>([]);
   const [creatorLoading, setCreatorLoading] = useState(false);
-  const [creatorError, setCreatorError] = useState('');
-  const [messageTemplate, setMessageTemplate] = useState(defaultOutreachTemplate);
-  const [emailSubject, setEmailSubject] = useState('Partnership opportunity with {{name}}');
-  const [recipientInput, setRecipientInput] = useState('');
+  const [creatorError, setCreatorError] = useState("");
+  const [messageTemplate, setMessageTemplate] = useState(
+    defaultOutreachTemplate,
+  );
+  const [emailSubject, setEmailSubject] = useState(
+    "Partnership opportunity with {{name}}",
+  );
+  const [recipientInput, setRecipientInput] = useState("");
   const [sendingBulk, setSendingBulk] = useState(false);
-  const [bulkSendStatus, setBulkSendStatus] = useState('');
+  const [bulkSendStatus, setBulkSendStatus] = useState("");
   const [inboxActivity, setInboxActivity] = useState<CampaignEmailLog[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
-  const [inboxError, setInboxError] = useState('');
-  const [projectId, setProjectId] = useState<string | null>(searchParams.get('project'));
-  const [projectStatus, setProjectStatus] = useState('');
+  const [inboxError, setInboxError] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(
+    searchParams.get("project"),
+  );
+  const [projectStatus, setProjectStatus] = useState("");
   const [savingProject, setSavingProject] = useState(false);
+  const [influencerFilters, setInfluencerFilters] = useState<FilterState>({
+    minFollowers: 0,
+    maxFollowers: 1000000,
+    keywords: "",
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [savedInfluencers, setSavedInfluencers] = useState<CreatorProfile[]>([]);
+  const [savedInfluencersLoading, setSavedInfluencersLoading] = useState(false);
+
+  const [smtpModalOpen, setSmtpModalOpen] = useState(false);
+  const [smtpConfigLoading, setSmtpConfigLoading] = useState(false);
+  const [smtpConfigSaving, setSmtpConfigSaving] = useState(false);
+  const [smtpConfigError, setSmtpConfigError] = useState("");
+  const [smtpConfigNotice, setSmtpConfigNotice] = useState("");
+  const [smtpConfig, setSmtpConfig] = useState({
+    enabled: false,
+    configured: false,
+    host: "",
+    port: 587,
+    secure: false,
+    username: "",
+    password: "",
+    hasPassword: false,
+    fromEmail: "",
+    fromName: "",
+  });
+
+  const loadUserSmtp = async ({ silent }: { silent: boolean }) => {
+    if (!user) return;
+
+    if (!silent) {
+      setSmtpConfigLoading(true);
+      setSmtpConfigError("");
+      setSmtpConfigNotice("");
+    }
+
+    try {
+      const data = await fetchUserSmtpConfig(user.uid);
+      setSmtpConfig((prev) => ({
+        ...prev,
+        enabled: data.enabled,
+        configured: data.configured,
+        host: data.host,
+        port: data.port,
+        secure: data.secure,
+        username: data.username,
+        hasPassword: data.hasPassword,
+        fromEmail: data.fromEmail,
+        fromName: data.fromName,
+        password: "",
+      }));
+    } catch (error) {
+      if (!silent) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to load SMTP configuration";
+        setSmtpConfigError(message);
+      }
+    } finally {
+      if (!silent) {
+        setSmtpConfigLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    if (step !== 4) return;
+    void loadUserSmtp({ silent: true });
+  }, [user, step]);
+
+  // Load saved influencers from Supabase
+  const loadSavedInfluencers = async () => {
+    if (!user) return;
+
+    setSavedInfluencersLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("saved_influencers")
+        .select("*")
+        .eq("user_id", user.uid)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const profiles: CreatorProfile[] = data.map((row) => ({
+          id: row.influencer_id,
+          platform: row.platform as "YouTube" | "TikTok" | "Instagram",
+          handle: row.handle,
+          displayName: row.display_name,
+          bio: row.bio || undefined,
+          avatarUrl: row.avatar_url || undefined,
+          profileUrl: row.profile_url || undefined,
+          followers: row.followers || undefined,
+          views: row.views || undefined,
+          engagementRate: row.engagement_rate
+            ? Number(row.engagement_rate)
+            : undefined,
+        }));
+        setSavedInfluencers(profiles);
+      }
+    } catch (error) {
+      console.error("Failed to load saved influencers:", error);
+    } finally {
+      setSavedInfluencersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    void loadSavedInfluencers();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
     const hydrate = async () => {
       const { data } = await supabase
-        .from('user_credits')
-        .select('*')
-        .eq('user_id', user.uid)
+        .from("user_credits")
+        .select("*")
+        .eq("user_id", user.uid)
         .maybeSingle();
 
       if (!data) return;
       setCredits({
         credits: data.credits_remaining || data.credits || 0,
-        maxCredits: data.max_credits || data.total_credits || 0
+        maxCredits: data.max_credits || data.total_credits || 0,
       });
     };
 
@@ -110,16 +252,16 @@ export default function Builder() {
     const channel = supabase
       .channel(`builder-user-${user.uid}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'user_credits',
-          filter: `user_id=eq.${user.uid}`
+          event: "*",
+          schema: "public",
+          table: "user_credits",
+          filter: `user_id=eq.${user.uid}`,
         },
         () => {
           void hydrate();
-        }
+        },
       )
       .subscribe();
 
@@ -129,79 +271,100 @@ export default function Builder() {
   }, [user]);
 
   useEffect(() => {
-    const queryProjectId = searchParams.get('project');
+    const queryProjectId = searchParams.get("project");
     setProjectId(queryProjectId);
 
     if (!user || !queryProjectId) {
-      setProjectStatus('');
+      setProjectStatus("");
       return;
     }
 
     const loadProject = async () => {
-      setProjectStatus('Loading project...');
+      setProjectStatus("Loading project...");
       const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', queryProjectId)
-        .eq('user_id', user.uid)
+        .from("projects")
+        .select("*")
+        .eq("id", queryProjectId)
+        .eq("user_id", user.uid)
         .maybeSingle();
 
       if (error || !data) {
-        setProjectStatus('Unable to load that project.');
+        setProjectStatus("Unable to load that project.");
         return;
       }
 
       const files = Array.isArray(data.files) ? data.files : [];
-      const draftFile = files.find((file: { name?: string }) => file?.name === 'campaign-draft.json');
+      const draftFile = files.find(
+        (file: { name?: string }) => file?.name === "campaign-draft.json",
+      );
 
       if (draftFile?.content) {
         try {
-          const draft = JSON.parse(String(draftFile.content)) as Partial<BuilderDraft>;
-          setProductDescription(draft.productDescription || data.first_prompt || '');
-          setProductUrl(draft.productUrl || '');
-          setPlatform(draft.platform || 'YouTube');
-          setLanguage(draft.language || 'English');
-          setDiscoverCount(typeof draft.discoverCount === 'number' ? draft.discoverCount : 20);
+          const draft = JSON.parse(
+            String(draftFile.content),
+          ) as Partial<BuilderDraft>;
+          setProductDescription(
+            draft.productDescription || data.first_prompt || "",
+          );
+          setProductUrl(draft.productUrl || "");
+          setPlatform(draft.platform || "YouTube");
+          setLanguage(draft.language || "English");
+          setDiscoverCount(
+            typeof draft.discoverCount === "number" ? draft.discoverCount : 20,
+          );
           setRegions(Array.isArray(draft.regions) ? draft.regions : []);
-          setFollowerRange(typeof draft.followerRange === 'number' ? draft.followerRange : 50000);
-          setHasEmail(typeof draft.hasEmail === 'boolean' ? draft.hasEmail : true);
-          setHashtags(draft.hashtags || '');
-          setInfluencerInput(draft.influencerInput || '');
+          setFollowerRange(
+            typeof draft.followerRange === "number"
+              ? draft.followerRange
+              : 50000,
+          );
+          setHasEmail(
+            typeof draft.hasEmail === "boolean" ? draft.hasEmail : true,
+          );
+          setHashtags(draft.hashtags || "");
+          setInfluencerInput(draft.influencerInput || "");
           setMessageTemplate(draft.messageTemplate || defaultOutreachTemplate);
-          setProjectStatus(`Editing: ${data.name || 'Untitled Project'}`);
+          setProjectStatus(`Editing: ${data.name || "Untitled Project"}`);
           return;
         } catch {
           // Fall back to first prompt if draft JSON is malformed.
         }
       }
 
-      setProductDescription(data.first_prompt || '');
-      setProjectStatus(`Editing: ${data.name || 'Untitled Project'}`);
+      setProductDescription(data.first_prompt || "");
+      setProjectStatus(`Editing: ${data.name || "Untitled Project"}`);
     };
 
     void loadProject();
   }, [searchParams, user]);
 
   useEffect(() => {
-    const stepValue = Number(searchParams.get('step'));
+    const stepValue = Number(searchParams.get("step"));
     if ([1, 2, 3, 4, 5].includes(stepValue)) {
       setStep(stepValue as StepId);
     }
   }, [searchParams]);
 
   const handleAutoRecommend = async () => {
-    setCreatorError('');
+    setCreatorError("");
     setCreatorLoading(true);
     setCreatorResults([]);
 
     try {
-      const results = await autoRecommendCreators(platform, productDescription, hashtags);
+      const results = await autoRecommendCreators(
+        platform,
+        productDescription,
+        hashtags,
+      );
       if (results.length === 0) {
-        setCreatorError('No recommendations found. Try adding more specific hashtags or product description.');
+        setCreatorError(
+          "No recommendations found. Try adding more specific hashtags or product description.",
+        );
       }
       setCreatorResults(results);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Recommendation lookup failed';
+      const message =
+        error instanceof Error ? error.message : "Recommendation lookup failed";
       setCreatorError(message);
     } finally {
       setCreatorLoading(false);
@@ -214,47 +377,133 @@ export default function Builder() {
     }
   }, [step]);
 
+  const filteredCreators = useMemo(() => {
+    let filtered = [...creatorResults];
+
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.displayName.toLowerCase().includes(query) ||
+          c.handle.toLowerCase().includes(query) ||
+          c.bio?.toLowerCase().includes(query),
+      );
+    }
+
+    if (influencerFilters.minFollowers > 0) {
+      filtered = filtered.filter(
+        (c) => (c.followers || 0) >= influencerFilters.minFollowers,
+      );
+    }
+    if (influencerFilters.maxFollowers < 1000000) {
+      filtered = filtered.filter(
+        (c) => (c.followers || 0) <= influencerFilters.maxFollowers,
+      );
+    }
+
+    if (influencerFilters.keywords.trim()) {
+      const keywords = influencerFilters.keywords.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.displayName.toLowerCase().includes(keywords) ||
+          c.handle.toLowerCase().includes(keywords) ||
+          c.bio?.toLowerCase().includes(keywords),
+      );
+    }
+
+    return filtered;
+  }, [creatorResults, influencerFilters, searchQuery]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredCreators.length / itemsPerPage);
+  const paginatedCreators = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredCreators.slice(startIndex, endIndex);
+  }, [filteredCreators, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [influencerFilters, creatorResults, searchQuery]);
+
   const parsedInfluencers = useMemo(
-    () => influencerInput.split('\n').map((line) => line.trim()).filter(Boolean),
-    [influencerInput]
+    () =>
+      influencerInput
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    [influencerInput],
   );
 
-  const parsedRecipients = useMemo(() => parseRecipientList(recipientInput), [recipientInput]);
+  const parsedRecipients = useMemo(
+    () => parseRecipientList(recipientInput),
+    [recipientInput],
+  );
 
   const sentEmails = useMemo(
-    () => inboxActivity.filter((item) => ['sent', 'delivered', 'opened', 'clicked', 'replied'].includes(item.status)).length,
-    [inboxActivity]
+    () =>
+      inboxActivity.filter((item) =>
+        ["sent", "delivered", "opened", "clicked", "replied"].includes(
+          item.status,
+        ),
+      ).length,
+    [inboxActivity],
   );
 
   const failedEmails = useMemo(
-    () => inboxActivity.filter((item) => ['failed', 'bounced', 'deferred'].includes(item.status)).length,
-    [inboxActivity]
+    () =>
+      inboxActivity.filter((item) =>
+        ["failed", "bounced", "deferred"].includes(item.status),
+      ).length,
+    [inboxActivity],
   );
 
   const repliedEmails = useMemo(
-    () => inboxActivity.filter((item) => item.status === 'replied').length,
-    [inboxActivity]
+    () => inboxActivity.filter((item) => item.status === "replied").length,
+    [inboxActivity],
   );
 
   const completion = useMemo(() => (step / stepLabels.length) * 100, [step]);
-  const usagePercent = credits.maxCredits > 0 ? Math.min(100, (credits.credits / credits.maxCredits) * 100) : 0;
+  const usagePercent =
+    credits.maxCredits > 0
+      ? Math.min(100, (credits.credits / credits.maxCredits) * 100)
+      : 0;
 
   const toggleRegion = (region: string) => {
-    setRegions((prev) => (prev.includes(region) ? prev.filter((item) => item !== region) : [...prev, region]));
+    setRegions((prev) =>
+      prev.includes(region)
+        ? prev.filter((item) => item !== region)
+        : [...prev, region],
+    );
   };
 
-  const nextStep = () => setStep((prev) => (prev < 5 ? ((prev + 1) as StepId) : prev));
-  const prevStep = () => setStep((prev) => (prev > 1 ? ((prev - 1) as StepId) : prev));
+  const nextStep = () =>
+    setStep((prev) => (prev < 5 ? ((prev + 1) as StepId) : prev));
+  const prevStep = () =>
+    setStep((prev) => (prev > 1 ? ((prev - 1) as StepId) : prev));
 
-  const addToShortlist = (profile: CreatorProfile) => {
+  // Auto-populate recipients when entering step 4
+  useEffect(() => {
+    if (step === 4 && parsedInfluencers.length > 0 && !recipientInput.trim()) {
+      setRecipientInput(parsedInfluencers.join("\n"));
+    }
+  }, [step, parsedInfluencers, recipientInput]);
+
+  const toggleShortlist = (profile: CreatorProfile) => {
     const current = influencerInput
-
-      .split('\n')
+      .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
 
-    if (!current.includes(profile.handle)) {
-      setInfluencerInput([...current, profile.handle].join('\n'));
+    if (current.includes(profile.handle)) {
+      // Remove from shortlist
+      const updated = current.filter((handle) => handle !== profile.handle);
+      setInfluencerInput(updated.join("\n"));
+    } else {
+      // Add to shortlist
+      setInfluencerInput([...current, profile.handle].join("\n"));
     }
   };
 
@@ -269,7 +518,7 @@ export default function Builder() {
     hasEmail,
     hashtags,
     influencerInput,
-    messageTemplate
+    messageTemplate,
   });
 
   const persistProject = async (markLaunched = false): Promise<boolean> => {
@@ -280,7 +529,7 @@ export default function Builder() {
     const draft = buildDraft();
     const projectName = productDescription.trim()
       ? productDescription.trim().slice(0, 58)
-      : `Campaign ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      : `Campaign ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
     const payload = {
       user_id: user.uid,
@@ -288,42 +537,44 @@ export default function Builder() {
       first_prompt: productDescription,
       files: [
         {
-          name: 'campaign-draft.json',
-          content: JSON.stringify(draft)
-        }
+          name: "campaign-draft.json",
+          content: JSON.stringify(draft),
+        },
       ],
-      last_modified: now
+      last_modified: now,
     };
 
     try {
       if (projectId) {
         const { error } = await supabase
-          .from('projects')
+          .from("projects")
           .update(payload)
-          .eq('id', projectId)
-          .eq('user_id', user.uid);
+          .eq("id", projectId)
+          .eq("user_id", user.uid);
         if (error) throw error;
       } else {
         const { data, error } = await supabase
-          .from('projects')
+          .from("projects")
           .insert(payload)
-          .select('id')
+          .select("id")
           .single();
         if (error) throw error;
 
         if (data?.id) {
           setProjectId(data.id);
           const nextParams = new URLSearchParams(searchParams);
-          nextParams.set('project', data.id);
+          nextParams.set("project", data.id);
           setSearchParams(nextParams);
         }
       }
 
-      setProjectStatus(markLaunched ? 'Campaign launched and saved.' : 'Draft saved.');
+      setProjectStatus(
+        markLaunched ? "Campaign launched and saved." : "Draft saved.",
+      );
       return true;
     } catch (error) {
-      console.error('Failed to save campaign project:', error);
-      setProjectStatus('Could not save right now. Try again.');
+      console.error("Failed to save campaign project:", error);
+      setProjectStatus("Could not save right now. Try again.");
       return false;
     } finally {
       setSavingProject(false);
@@ -333,7 +584,7 @@ export default function Builder() {
   const handleLaunchCampaign = async () => {
     const saved = await persistProject(true);
     if (saved) {
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
   };
 
@@ -341,12 +592,15 @@ export default function Builder() {
     if (!user) return;
 
     setInboxLoading(true);
-    setInboxError('');
+    setInboxError("");
     try {
       const rows = await fetchCampaignInbox(user.uid, projectId || undefined);
       setInboxActivity(rows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load inbox activity';
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load inbox activity";
       setInboxError(message);
     } finally {
       setInboxLoading(false);
@@ -362,38 +616,50 @@ export default function Builder() {
     if (!user) return;
 
     if (!emailSubject.trim()) {
-      setBulkSendStatus('Add an email subject before sending.');
+      setBulkSendStatus("Add an email subject before sending.");
       return;
     }
 
     if (!messageTemplate.trim()) {
-      setBulkSendStatus('Add a message template before sending.');
+      setBulkSendStatus("Add a message template before sending.");
       return;
     }
 
     if (parsedRecipients.length === 0) {
-      setBulkSendStatus('Add at least one valid recipient email.');
+      setBulkSendStatus("Add at least one valid recipient email.");
+      return;
+    }
+
+    if (smtpConfig.enabled && !smtpConfig.configured) {
+      setBulkSendStatus(
+        "Your SMTP is enabled but not configured. Click SMTP config and add your credentials.",
+      );
       return;
     }
 
     setSendingBulk(true);
-    setBulkSendStatus('');
+    setBulkSendStatus("");
 
     try {
+      const deliveryMethod = smtpConfig.enabled ? "user_smtp" : "project";
       const result = await sendBulkEmails({
         userId: user.uid,
         projectId,
         senderEmail: user.email || undefined,
-        senderName: user.displayName || 'CollabFree Team',
+        senderName: user.displayName || "CollabFree Team",
+        deliveryMethod,
         subject: emailSubject,
         messageTemplate,
-        recipients: parsedRecipients
+        recipients: parsedRecipients,
       });
 
-      setBulkSendStatus(`Sent ${result.sentCount}/${result.total}. Failed: ${result.failedCount}.`);
+      setBulkSendStatus(
+        `Sent ${result.sentCount}/${result.total}. Failed: ${result.failedCount}.`,
+      );
       await refreshInbox();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bulk send failed';
+      const message =
+        error instanceof Error ? error.message : "Bulk send failed";
       setBulkSendStatus(message);
     } finally {
       setSendingBulk(false);
@@ -403,33 +669,60 @@ export default function Builder() {
   return (
     <div className="ec-builder-page">
       <aside className="ec-builder-sidebar">
-        <button className="ec-builder-brand" onClick={() => navigate('/dashboard')}>
+        <button
+          className="ec-builder-brand"
+          onClick={() => navigate("/dashboard")}
+        >
           <Sparkles size={17} />
           <span>CollabFree</span>
         </button>
 
         <div className="ec-builder-menu">
-          <button className="active"><Search size={15} /> Search</button>
-          <button><Users size={15} /> Manage</button>
-          <button><MessageSquare size={15} /> Email</button>
+          <button 
+            className={step === 3 ? "active" : ""}
+            onClick={() => setStep(3)}
+            title="Search and discover influencers"
+          >
+            <Search size={15} /> Search
+          </button>
+          <button
+            className={step === 3 ? "active" : ""}
+            onClick={() => setStep(3)}
+            title="Manage your shortlisted influencers"
+          >
+            <Users size={15} /> Manage
+          </button>
+          <button
+            className={step === 4 ? "active" : ""}
+            onClick={() => setStep(4)}
+            title="Send emails to influencers"
+          >
+            <MessageSquare size={15} /> Email
+          </button>
         </div>
 
         <div className="ec-builder-card">
           <p>Credit Usage</p>
-          <strong>{credits.credits} / {credits.maxCredits} credits</strong>
-          <div className="bar"><span style={{ width: `${usagePercent}%` }} /></div>
+          <strong>
+            {credits.credits} / {credits.maxCredits} credits
+          </strong>
+          <div className="bar">
+            <span style={{ width: `${usagePercent}%` }} />
+          </div>
         </div>
       </aside>
 
       <main className="ec-builder-main">
         <header className="ec-builder-head">
-          <button className="back" onClick={() => navigate('/dashboard')}>
+          <button className="back" onClick={() => navigate("/dashboard")}>
             <ArrowLeft size={14} /> Dashboard
           </button>
           <div className="ec-builder-title">
             <h1>Quick Search Campaign</h1>
             <p>Complete each page to launch your outreach workflow.</p>
-            {projectStatus && <small className="ec-project-status">{projectStatus}</small>}
+            {projectStatus && (
+              <small className="ec-project-status">{projectStatus}</small>
+            )}
           </div>
         </header>
 
@@ -437,7 +730,7 @@ export default function Builder() {
           {stepLabels.map((item) => (
             <button
               key={item.id}
-              className={`ec-step ${item.id === step ? 'active' : ''} ${item.id < step ? 'done' : ''}`}
+              className={`ec-step ${item.id === step ? "active" : ""} ${item.id < step ? "done" : ""}`}
               onClick={() => setStep(item.id)}
             >
               <span>{item.id < step ? <Check size={12} /> : item.id}</span>
@@ -446,7 +739,9 @@ export default function Builder() {
           ))}
         </section>
 
-        <div className="ec-progress"><span style={{ width: `${completion}%` }} /></div>
+        <div className="ec-progress">
+          <span style={{ width: `${completion}%` }} />
+        </div>
 
         <section className="ec-workspace">
           {step === 1 && (
@@ -455,7 +750,9 @@ export default function Builder() {
                 Describe your product or ideal influencer
                 <textarea
                   value={productDescription}
-                  onChange={(event) => setProductDescription(event.target.value)}
+                  onChange={(event) =>
+                    setProductDescription(event.target.value)
+                  }
                   placeholder="Example: AI startup tool for productivity, looking for tech creators in English speaking markets."
                 />
               </label>
@@ -473,10 +770,10 @@ export default function Builder() {
               <label>
                 Platform
                 <div className="ec-pill-row">
-                  {(['YouTube', 'TikTok', 'Instagram'] as const).map((item) => (
+                  {(["YouTube", "TikTok", "Instagram"] as const).map((item) => (
                     <button
                       key={item}
-                      className={platform === item ? 'selected' : ''}
+                      className={platform === item ? "selected" : ""}
                       onClick={() => setPlatform(item)}
                       type="button"
                     >
@@ -488,7 +785,10 @@ export default function Builder() {
 
               <label>
                 Language
-                <input value={language} onChange={(event) => setLanguage(event.target.value)} />
+                <input
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value)}
+                />
               </label>
 
               <label>
@@ -498,17 +798,26 @@ export default function Builder() {
                   min={1}
                   max={200}
                   value={discoverCount}
-                  onChange={(event) => setDiscoverCount(Number(event.target.value) || 1)}
+                  onChange={(event) =>
+                    setDiscoverCount(Number(event.target.value) || 1)
+                  }
                 />
               </label>
 
               <label>
                 Regions
                 <div className="ec-pill-row">
-                  {['Asia', 'Europe', 'Africa', 'North America', 'South America', 'Oceania'].map((item) => (
+                  {[
+                    "Asia",
+                    "Europe",
+                    "Africa",
+                    "North America",
+                    "South America",
+                    "Oceania",
+                  ].map((item) => (
                     <button
                       key={item}
-                      className={regions.includes(item) ? 'selected' : ''}
+                      className={regions.includes(item) ? "selected" : ""}
                       onClick={() => toggleRegion(item)}
                       type="button"
                     >
@@ -526,7 +835,9 @@ export default function Builder() {
                   max={500000}
                   step={10000}
                   value={followerRange}
-                  onChange={(event) => setFollowerRange(Number(event.target.value))}
+                  onChange={(event) =>
+                    setFollowerRange(Number(event.target.value))
+                  }
                 />
                 <small>Up to {followerRange.toLocaleString()} followers</small>
               </label>
@@ -545,7 +856,10 @@ export default function Builder() {
           {step === 2 && (
             <div className="ec-step-card">
               <h2>Add hashtags for search quality</h2>
-              <p>Use comma-separated tags. These will be applied to your campaign query.</p>
+              <p>
+                Use comma-separated tags. These will be applied to your campaign
+                query.
+              </p>
               <textarea
                 value={hashtags}
                 onChange={(event) => setHashtags(event.target.value)}
@@ -556,63 +870,320 @@ export default function Builder() {
 
           {step === 3 && (
             <div className="ec-step-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                }}
+              >
                 <h2>Recommended Influencers</h2>
-                <button type="button" onClick={handleAutoRecommend} disabled={creatorLoading} className="ec-refresh-btn" style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px', background: '#fff', border: '1px solid #e8d8c7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {creatorLoading ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-                  {creatorLoading ? 'Generating...' : 'Refresh Recommendations'}
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <InfluencerFilters onFilterChange={setInfluencerFilters} />
+                  <button
+                    type="button"
+                    onClick={handleAutoRecommend}
+                    disabled={creatorLoading}
+                    className="ec-refresh-btn"
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      background: "#fff",
+                      border: "1px solid #e8d8c7",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {creatorLoading ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Sparkles size={14} />
+                    )}
+                    {creatorLoading
+                      ? "Generating..."
+                      : "Refresh Recommendations"}
+                  </button>
+                </div>
               </div>
-              <p>Based on your campaign details, here are some suggested {platform} creators to shortlist.</p>
+              <p>
+                Based on your campaign details, here are some suggested{" "}
+                {platform} creators to shortlist.
+              </p>
 
-              {creatorError && <div className="ec-lookup-error">{creatorError}</div>}
+              {/* Search Bar */}
+              <div className="ec-search-bar">
+                <Search size={16} />
+                <input
+                  type="text"
+                  placeholder="Search by name, handle, or bio..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="ec-search-input"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="ec-clear-search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
 
-              {creatorResults.length > 0 && (
-                <div className="ec-results-grid">
-                  {creatorResults.map((profile) => (
-                    <article key={profile.id}>
-                      <div className="head">
-                        <div>
-                          <h3>{profile.displayName}</h3>
-                          <p>{profile.handle}</p>
-                        </div>
-                        {profile.avatarUrl && <img src={profile.avatarUrl} alt={profile.displayName} />}
-                      </div>
-                      <small>{profileMeta(profile)}</small>
-                      {profile.bio && <p className="bio">{profile.bio}</p>}
-                      <div className="actions">
-                        <button type="button" onClick={() => addToShortlist(profile)}>Add to shortlist</button>
-                        {profile.profileUrl && (
-                          <a href={profile.profileUrl} target="_blank" rel="noreferrer">
-                            Open
-                            <ExternalLink size={13} />
-                          </a>
-                        )}
-                      </div>
-                    </article>
-                  ))}
+              {creatorError && (
+                <div className="ec-lookup-error">{creatorError}</div>
+              )}
+
+              {creatorLoading && (
+                <div style={{ textAlign: "center", padding: "40px", color: "#7b6556" }}>
+                  <Loader2 size={24} className="spin" style={{ margin: "0 auto 12px" }} />
+                  <p>Loading influencers...</p>
                 </div>
               )}
 
-              <p>Manual mode: paste one influencer handle/name per line.</p>
-              <textarea
-                value={influencerInput}
-                onChange={(event) => setInfluencerInput(event.target.value)}
-                placeholder="@creator_one\n@creator_two\n@creator_three"
-              />
-              <div className="ec-template-preview">
-                <Users size={16} />
-                <span>{parsedInfluencers.length} shortlisted</span>
+              {!creatorLoading && filteredCreators.length === 0 && creatorResults.length === 0 && (
+                <div style={{ textAlign: "center", padding: "40px", color: "#7b6556" }}>
+                  <Users size={32} style={{ margin: "0 auto 12px" }} />
+                  <p>Click "Refresh Recommendations" to discover influencers</p>
+                </div>
+              )}
+
+              {!creatorLoading && filteredCreators.length > 0 && (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", color: "#7b6556", fontWeight: 600 }}>
+                      {filteredCreators.length} results
+                    </span>
+                    {totalPages > 1 && (
+                      <span style={{ fontSize: "13px", color: "#7b6556", fontWeight: 600 }}>
+                        Page {currentPage} of {totalPages}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="ec-results-grid">
+                    {paginatedCreators.map((profile) => {
+                      const isShortlisted = parsedInfluencers.includes(profile.handle);
+                      
+                      return (
+                        <article key={profile.id}>
+                          <div className="head">
+                            <div>
+                              <h3>{profile.displayName}</h3>
+                              <p>{profile.handle}</p>
+                              {profile.email && (
+                                <p className="ec-card-email">
+                                  <Mail size={12} />
+                                  {profile.email}
+                                </p>
+                              )}
+                            </div>
+                            {profile.avatarUrl && (
+                              <img
+                                src={profile.avatarUrl}
+                                alt={profile.displayName}
+                              />
+                            )}
+                          </div>
+                          <small>{profileMeta(profile)}</small>
+                          {profile.bio && <p className="bio">{profile.bio}</p>}
+                          <div className="actions">
+                            <button
+                              type="button"
+                              onClick={() => toggleShortlist(profile)}
+                              className={isShortlisted ? "shortlisted" : ""}
+                            >
+                              {isShortlisted ? (
+                                <>
+                                  <Check size={13} />
+                                  Added
+                                </>
+                              ) : (
+                                "Add to shortlist"
+                              )}
+                            </button>
+                            {profile.profileUrl && (
+                              <a
+                                href={profile.profileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Open
+                                <ExternalLink size={13} />
+                              </a>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                {totalPages > 1 && (
+                  <div className="ec-builder-pagination">
+                    <button
+                      type="button"
+                      className="ec-page-btn"
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft size={16} />
+                      Previous
+                    </button>
+
+                    <div className="ec-page-numbers">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter((page) => {
+                          return (
+                            page === 1 ||
+                            page === totalPages ||
+                            Math.abs(page - currentPage) <= 1
+                          );
+                        })
+                        .map((page, index, array) => {
+                          const prevPage = array[index - 1];
+                          const showEllipsis = prevPage && page - prevPage > 1;
+
+                          return (
+                            <div key={page} style={{ display: "flex", gap: "4px" }}>
+                              {showEllipsis && (
+                                <span className="ec-page-ellipsis">...</span>
+                              )}
+                              <button
+                                type="button"
+                                className={`ec-page-num ${page === currentPage ? "active" : ""}`}
+                                onClick={() => setCurrentPage(page)}
+                              >
+                                {page}
+                              </button>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="ec-page-btn"
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </>
+              )}
+
+              <div style={{ marginTop: "24px", paddingTop: "24px", borderTop: "2px solid #f2e0d0" }}>
+                <h3 style={{ fontSize: "18px", marginBottom: "12px", color: "#2b221d" }}>
+                  Selected Influencers for Campaign
+                </h3>
+                <p style={{ color: "#735f50", fontSize: "14px", marginBottom: "16px" }}>
+                  These influencers will be contacted via email. Click the remove button to unselect.
+                </p>
+
+                {parsedInfluencers.length === 0 ? (
+                  <div style={{ 
+                    textAlign: "center", 
+                    padding: "40px", 
+                    background: "#fffbf7",
+                    border: "1px solid #f2e0d0",
+                    borderRadius: "12px",
+                    color: "#7b6556" 
+                  }}>
+                    <Users size={32} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
+                    <p style={{ fontWeight: 600 }}>No influencers selected yet</p>
+                    <p style={{ fontSize: "13px", marginTop: "8px" }}>
+                      Click "Add to shortlist" on influencer cards above to select them
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="ec-template-preview" style={{ marginBottom: "16px" }}>
+                      <Users size={16} />
+                      <span>{parsedInfluencers.length} influencer{parsedInfluencers.length !== 1 ? 's' : ''} selected</span>
+                    </div>
+
+                    <div className="ec-shortlist-chips">
+                      {parsedInfluencers.map((handle) => {
+                        const profile = creatorResults.find(c => c.handle === handle);
+                        
+                        return (
+                          <div key={handle} className="ec-chip">
+                            {profile?.avatarUrl && (
+                              <img
+                                src={profile.avatarUrl}
+                                alt={profile.displayName || handle}
+                                className="ec-chip-avatar"
+                              />
+                            )}
+                            <span className="ec-chip-name">
+                              {profile?.displayName || handle}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = parsedInfluencers.filter(h => h !== handle);
+                                setInfluencerInput(updated.join("\n"));
+                              }}
+                              className="ec-chip-remove"
+                              title="Remove from shortlist"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="ec-delivery-status" style={{ marginTop: "20px" }}>
+                <span className="ec-muted">
+                  Delivery:{" "}
+                  {smtpConfig.enabled
+                    ? "Your SMTP (optional)"
+                    : "Project email (default)"}
+                </span>
               </div>
             </div>
           )}
 
           {step === 4 && (
             <div className="ec-step-card">
-              <h2>Contact all shortlisted influencers</h2>
+              <div className="ec-step-header">
+                <h2>Contact all shortlisted influencers</h2>
+                <button
+                  type="button"
+                  className="ec-config-btn-small"
+                  onClick={() => {
+                    setSmtpModalOpen(true);
+                    void loadUserSmtp({ silent: false });
+                  }}
+                >
+                  <Settings size={14} />
+                  SMTP config
+                </button>
+              </div>
               <p>
-                Add recipients, compose a reusable message, and send bulk emails via Brevo.
-                Use placeholders like {'{{name}}'} in subject/body.
+                Add recipients, compose a reusable message, and send bulk emails
+                via Brevo (or your own SMTP if configured). Use placeholders
+                like {"{{name}}"} in subject/body.
               </p>
 
               <label>
@@ -626,10 +1197,89 @@ export default function Builder() {
 
               <label>
                 Recipients (one per line)
+                <div style={{ display: "flex", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (parsedInfluencers.length > 0) {
+                        setRecipientInput(parsedInfluencers.join("\n"));
+                      }
+                    }}
+                    disabled={parsedInfluencers.length === 0}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      background: parsedInfluencers.length > 0 ? "#f57c24" : "#ccc",
+                      color: "#fff",
+                      border: "none",
+                      cursor: parsedInfluencers.length > 0 ? "pointer" : "not-allowed",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <Users size={14} />
+                    Load {parsedInfluencers.length} Shortlisted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (savedInfluencers.length > 0) {
+                        const handles = savedInfluencers.map(inf => inf.handle);
+                        setRecipientInput(handles.join("\n"));
+                      }
+                    }}
+                    disabled={savedInfluencersLoading || savedInfluencers.length === 0}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      background: savedInfluencers.length > 0 ? "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)" : "#ccc",
+                      color: "#fff",
+                      border: "none",
+                      cursor: savedInfluencers.length > 0 ? "pointer" : "not-allowed",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {savedInfluencersLoading ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Users size={14} />
+                    )}
+                    Use {savedInfluencers.length} Saved
+                  </button>
+                  {recipientInput && (
+                    <button
+                      type="button"
+                      onClick={() => setRecipientInput("")}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        background: "#fff",
+                        color: "#634f41",
+                        border: "1px solid #e8d8c7",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={recipientInput}
                   onChange={(event) => setRecipientInput(event.target.value)}
-                  placeholder={"Jane Creator <jane@creator.com>\ncreator.two@domain.com"}
+                  placeholder={
+                    parsedInfluencers.length > 0 || savedInfluencers.length > 0
+                      ? "Click 'Load Shortlisted' or 'Use Saved' to add influencers"
+                      : "Jane Creator <jane@creator.com>\ncreator.two@domain.com"
+                  }
                 />
               </label>
 
@@ -640,29 +1290,52 @@ export default function Builder() {
 
               <div className="ec-template-preview">
                 <Mail size={16} />
-                <span>Template ready for {parsedRecipients.length} email recipients</span>
+                <span>
+                  Template ready for {parsedRecipients.length} email recipients
+                </span>
               </div>
 
               <div className="ec-inline-actions">
-                <button type="button" className="ec-send-btn" onClick={handleSendBulkEmails} disabled={sendingBulk}>
-                  {sendingBulk ? <Loader2 size={15} className="spin" /> : <Send size={15} />}
-                  {sendingBulk ? 'Sending...' : 'Send Bulk Emails'}
+                <button
+                  type="button"
+                  className="ec-send-btn"
+                  onClick={handleSendBulkEmails}
+                  disabled={sendingBulk}
+                >
+                  {sendingBulk ? (
+                    <Loader2 size={15} className="spin" />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  {sendingBulk ? "Sending..." : "Send Bulk Emails"}
                 </button>
-                <button type="button" className="ec-refresh-btn" onClick={() => void refreshInbox()} disabled={inboxLoading}>
-                  {inboxLoading ? 'Refreshing...' : 'Refresh Inbox'}
+                <button
+                  type="button"
+                  className="ec-refresh-btn"
+                  onClick={() => void refreshInbox()}
+                  disabled={inboxLoading}
+                >
+                  {inboxLoading ? "Refreshing..." : "Refresh Inbox"}
                 </button>
               </div>
 
-              {bulkSendStatus && <div className="ec-send-status">{bulkSendStatus}</div>}
+              {bulkSendStatus && (
+                <div className="ec-send-status">{bulkSendStatus}</div>
+              )}
             </div>
           )}
 
           {step === 5 && (
             <div className="ec-step-card">
               <h2>Reply tracking summary</h2>
-              <p>This page combines your outgoing sends, delivery events, and inbox-style status updates.</p>
+              <p>
+                This page combines your outgoing sends, delivery events, and
+                inbox-style status updates.
+              </p>
 
-              {inboxError && <div className="ec-lookup-error">{inboxError}</div>}
+              {inboxError && (
+                <div className="ec-lookup-error">{inboxError}</div>
+              )}
 
               <div className="ec-reply-grid">
                 <article>
@@ -680,17 +1353,26 @@ export default function Builder() {
               </div>
 
               <div className="ec-log-list">
-                {inboxLoading && <p className="ec-muted">Loading inbox activity...</p>}
+                {inboxLoading && (
+                  <p className="ec-muted">Loading inbox activity...</p>
+                )}
                 {!inboxLoading && inboxActivity.length === 0 && (
-                  <p className="ec-muted">No email activity yet. Send a bulk email in Step 4 to populate this inbox.</p>
+                  <p className="ec-muted">
+                    No email activity yet. Send a bulk email in Step 4 to
+                    populate this inbox.
+                  </p>
                 )}
                 {inboxActivity.slice(0, 12).map((row) => (
                   <article key={row.id} className="ec-log-item">
                     <div>
-                      <strong>{row.recipient_name || row.recipient_email}</strong>
-                      <p>{row.subject || 'No subject'}</p>
+                      <strong>
+                        {row.recipient_name || row.recipient_email}
+                      </strong>
+                      <p>{row.subject || "No subject"}</p>
                     </div>
-                    <div className={`ec-status ${row.status}`}>{row.status}</div>
+                    <div className={`ec-status ${row.status}`}>
+                      {row.status}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -699,23 +1381,243 @@ export default function Builder() {
         </section>
 
         <footer className="ec-builder-footer">
-          <button className="ghost" onClick={() => void persistProject(false)} disabled={savingProject}>
-            {savingProject ? 'Saving...' : 'Save Draft'}
+          <button
+            className="ghost"
+            onClick={() => void persistProject(false)}
+            disabled={savingProject}
+          >
+            {savingProject ? "Saving..." : "Save Draft"}
           </button>
-          <button className="ghost" onClick={prevStep} disabled={step === 1}>Previous</button>
+          <button className="ghost" onClick={prevStep} disabled={step === 1}>
+            Previous
+          </button>
           {step < 5 ? (
             <button className="primary" onClick={nextStep}>
               Next
               <ArrowRight size={15} />
             </button>
           ) : (
-            <button className="primary" onClick={() => void handleLaunchCampaign()} disabled={savingProject}>
+            <button
+              className="primary"
+              onClick={() => void handleLaunchCampaign()}
+              disabled={savingProject}
+            >
               <Send size={15} />
-              {savingProject ? 'Launching...' : 'Launch Campaign'}
+              {savingProject ? "Launching..." : "Launch Campaign"}
             </button>
           )}
         </footer>
       </main>
+
+      {smtpModalOpen && (
+        <div
+          className="ec-modal-overlay"
+          onClick={() => setSmtpModalOpen(false)}
+        >
+          <div
+            className="ec-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="ec-modal-head">
+              <div>
+                <h2>SMTP Settings</h2>
+                <p>
+                  Optional: use your own SMTP, otherwise we use the default
+                  project sender.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ec-modal-close"
+                onClick={() => setSmtpModalOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {smtpConfigError && (
+              <div className="ec-modal-alert ec-modal-error">
+                {smtpConfigError}
+              </div>
+            )}
+            {smtpConfigNotice && (
+              <div className="ec-modal-alert ec-modal-notice">
+                {smtpConfigNotice}
+              </div>
+            )}
+
+            <label className="ec-modal-toggle">
+              <input
+                type="checkbox"
+                checked={smtpConfig.enabled}
+                onChange={(event) =>
+                  setSmtpConfig((prev) => ({
+                    ...prev,
+                    enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Use my SMTP for bulk emails</span>
+            </label>
+
+            <div className="ec-modal-grid">
+              <label>
+                SMTP host
+                <input
+                  value={smtpConfig.host}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      host: event.target.value,
+                    }))
+                  }
+                  placeholder="smtp.yourdomain.com"
+                />
+              </label>
+
+              <label>
+                SMTP port
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={smtpConfig.port}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      port: Number(event.target.value) || 587,
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="ec-checkbox ec-modal-checkbox">
+                <input
+                  type="checkbox"
+                  checked={smtpConfig.secure}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      secure: event.target.checked,
+                    }))
+                  }
+                />
+                Secure (SSL/TLS)
+              </label>
+
+              <label>
+                Username
+                <input
+                  value={smtpConfig.username}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      username: event.target.value,
+                    }))
+                  }
+                  placeholder="your_smtp_username"
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={smtpConfig.password}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    smtpConfig.hasPassword
+                      ? "•••••••• (saved)"
+                      : "Your SMTP password / API key"
+                  }
+                />
+              </label>
+
+              <label>
+                From name
+                <input
+                  value={smtpConfig.fromName}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      fromName: event.target.value,
+                    }))
+                  }
+                  placeholder="Your Brand"
+                />
+              </label>
+
+              <label>
+                From email
+                <input
+                  type="email"
+                  value={smtpConfig.fromEmail}
+                  onChange={(event) =>
+                    setSmtpConfig((prev) => ({
+                      ...prev,
+                      fromEmail: event.target.value,
+                    }))
+                  }
+                  placeholder="sender@yourdomain.com"
+                />
+              </label>
+            </div>
+
+            <div className="ec-modal-actions">
+              <button
+                type="button"
+                className="ec-refresh-btn"
+                onClick={() => setSmtpModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="ec-send-btn"
+                disabled={smtpConfigSaving || smtpConfigLoading}
+                onClick={async () => {
+                  if (!user) return;
+                  setSmtpConfigSaving(true);
+                  setSmtpConfigError("");
+                  setSmtpConfigNotice("");
+                  try {
+                    await saveUserSmtpConfig({
+                      userId: user.uid,
+                      enabled: smtpConfig.enabled,
+                      host: smtpConfig.host,
+                      port: smtpConfig.port,
+                      secure: smtpConfig.secure,
+                      username: smtpConfig.username,
+                      password: smtpConfig.password.trim()
+                        ? smtpConfig.password
+                        : undefined,
+                      fromEmail: smtpConfig.fromEmail,
+                      fromName: smtpConfig.fromName,
+                    });
+                    setSmtpConfigNotice("Saved.");
+                    await loadUserSmtp({ silent: false });
+                  } catch (error) {
+                    const message =
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to save SMTP configuration";
+                    setSmtpConfigError(message);
+                  } finally {
+                    setSmtpConfigSaving(false);
+                  }
+                }}
+              >
+                {smtpConfigSaving ? "Saving..." : "Save config"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .ec-builder-page {
@@ -1001,6 +1903,16 @@ export default function Builder() {
           font-weight: 700;
         }
 
+        .ec-card-email {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          color: #1f7a40 !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          margin-top: 4px;
+        }
+
         .ec-results-grid img {
           width: 38px;
           height: 38px;
@@ -1047,12 +1959,160 @@ export default function Builder() {
           background: #f57c24;
           color: #fff;
           cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .ec-results-grid .actions button:hover:not(:disabled) {
+          background: #e66d15;
+          transform: translateY(-1px);
+        }
+
+        .ec-results-grid .actions button.shortlisted {
+          background: #1f7a40;
+          border: 1px solid #bfe7ce;
+          cursor: pointer;
+        }
+
+        .ec-results-grid .actions button.shortlisted:hover {
+          background: #1a6535;
+          transform: translateY(-1px);
         }
 
         .ec-results-grid .actions a {
           border: 1px solid #e5d5c7;
           color: #6b584b;
           background: #fff;
+          transition: all 0.2s ease;
+        }
+
+        .ec-results-grid .actions a:hover {
+          background: #fffbf7;
+          border-color: #d8c7b6;
+        }
+
+        .ec-builder-pagination {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 20px;
+          padding-top: 16px;
+          border-top: 1px solid #f2e0d0;
+        }
+
+        .ec-page-btn {
+          border: 1px solid #e8d8c7;
+          background: #fff;
+          border-radius: 10px;
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #634f41;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+        }
+
+        .ec-page-btn:hover:not(:disabled) {
+          background: #fffbf7;
+          border-color: #d8c7b6;
+          color: #4f3f32;
+        }
+
+        .ec-page-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .ec-page-numbers {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .ec-page-num {
+          min-width: 36px;
+          height: 36px;
+          border: 1px solid #e8d8c7;
+          background: #fff;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #634f41;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .ec-page-num:hover {
+          background: #fffbf7;
+          border-color: #d8c7b6;
+        }
+
+        .ec-page-num.active {
+          background: linear-gradient(135deg, #f47d21, #dc4f24);
+          border-color: #f47d21;
+          color: #fff;
+        }
+
+        .ec-page-ellipsis {
+          padding: 0 8px;
+          color: #816c5c;
+          font-weight: 700;
+        }
+
+        .ec-search-bar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          border: 1px solid #e6d7c8;
+          border-radius: 10px;
+          background: #fffefb;
+          margin-bottom: 16px;
+        }
+
+        .ec-search-bar svg {
+          color: #7b6556;
+          flex-shrink: 0;
+        }
+
+        .ec-search-input {
+          flex: 1;
+          border: none;
+          background: transparent;
+          font-size: 14px;
+          color: #2b221d;
+          outline: none;
+          font-family: inherit;
+        }
+
+        .ec-search-input::placeholder {
+          color: #9b8778;
+        }
+
+        .ec-clear-search {
+          border: none;
+          background: #f2e0d0;
+          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: #634f41;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+
+        .ec-clear-search:hover {
+          background: #e8d0b8;
+          color: #4f3f32;
         }
 
         .ec-form-grid {
@@ -1154,6 +2214,230 @@ export default function Builder() {
           flex-wrap: wrap;
           gap: 8px;
           margin-top: 8px;
+        }
+
+        .ec-config-btn {
+          border: 1px solid #e8d7c6;
+          border-radius: 10px;
+          padding: 9px 12px;
+          font-size: 13px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          background: #fff;
+          color: #634f41;
+        }
+
+        .ec-step-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+
+        .ec-step-header h2 {
+          margin: 0;
+          flex: 1;
+        }
+
+        .ec-config-btn-small {
+          border: 1px solid #e8d7c6;
+          border-radius: 8px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          background: #fffbf7;
+          color: #634f41;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+
+        .ec-config-btn-small:hover {
+          background: #fff;
+          border-color: #d8c7b6;
+          color: #4f3f32;
+        }
+
+        .ec-delivery-status {
+          margin-top: 10px;
+        }
+
+        .ec-shortlist-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .ec-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px 6px 6px;
+          background: #f47523;
+          color: #fff;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+          transition: all 0.2s ease;
+        }
+
+        .ec-chip:hover {
+          background: #e66d15;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 6px rgba(244, 117, 35, 0.3);
+        }
+
+        .ec-chip-avatar {
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          object-fit: cover;
+          border: 1.5px solid rgba(255, 255, 255, 0.5);
+          flex-shrink: 0;
+        }
+
+        .ec-chip-name {
+          max-width: 150px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .ec-chip-remove {
+          border: none;
+          background: rgba(255, 255, 255, 0.25);
+          color: #fff;
+          border-radius: 999px;
+          width: 18px;
+          height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+          padding: 0;
+        }
+
+        .ec-chip-remove:hover {
+          background: rgba(255, 255, 255, 0.4);
+          transform: scale(1.15);
+        }
+
+        .ec-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(30, 18, 10, 0.55);
+          backdrop-filter: blur(6px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+          padding: 16px;
+        }
+
+        .ec-modal {
+          width: 100%;
+          max-width: 640px;
+          background: #fffefb;
+          border: 1px solid #e6d7c8;
+          border-radius: 16px;
+          padding: 16px;
+          box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+          animation: fade-up 0.2s ease;
+        }
+
+        .ec-modal-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+
+        .ec-modal-head h2 {
+          margin: 0;
+          font-size: 18px;
+          color: #2b221d;
+        }
+
+        .ec-modal-head p {
+          margin: 2px 0 0;
+          color: #735f50;
+          font-weight: 600;
+          font-size: 13px;
+        }
+
+        .ec-modal-close {
+          border: 0;
+          background: transparent;
+          color: #6a5647;
+          cursor: pointer;
+          padding: 6px;
+          border-radius: 10px;
+        }
+
+        .ec-modal-close:hover {
+          background: rgba(240, 113, 37, 0.12);
+          color: #dc4f24;
+        }
+
+        .ec-modal-toggle {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 8px 0 12px;
+          font-weight: 800;
+          color: #4f3f32;
+        }
+
+        .ec-modal-toggle input {
+          width: 16px;
+          height: 16px;
+        }
+
+        .ec-modal-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .ec-modal-checkbox {
+          grid-column: 1 / -1;
+        }
+
+        .ec-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .ec-modal-alert {
+          border-radius: 10px;
+          padding: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          margin-top: 8px;
+        }
+
+        .ec-modal-error {
+          border: 1px solid #f2c7c7;
+          background: #fff3f3;
+          color: #a53e3e;
+        }
+
+        .ec-modal-notice {
+          border: 1px solid #bfe7ce;
+          background: #ecfaf1;
+          color: #1f7a40;
         }
 
         .ec-send-btn,
@@ -1397,6 +2681,10 @@ export default function Builder() {
           .ec-builder-footer button {
             width: 100%;
             justify-content: center;
+          }
+
+          .ec-modal-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

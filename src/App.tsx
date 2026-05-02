@@ -12,8 +12,12 @@ import Signup from "./pages/SignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Builder from "./pages/Builder";
-import { PaymentSuccess } from './pages/PaymentSuccess';
-import { Sparkles } from 'lucide-react';
+import CampaignInfluencers from "./pages/CampaignInfluencers";
+import CampaignPlatforms from "./pages/CampaignPlatforms";
+import CampaignRecent from "./pages/CampaignRecent";
+import Profile from "./pages/Profile";
+import { PaymentSuccess } from "./pages/PaymentSuccess";
+import { Sparkles } from "lucide-react";
 
 const AppRoutes = () => {
   const { user, loading } = useAuth();
@@ -26,7 +30,9 @@ const AppRoutes = () => {
             <Sparkles className="w-10 h-10" />
           </div>
           <div className="loading-text">Preparing CollabFree...</div>
-          <div className="loading-bar"><div className="loading-progress"></div></div>
+          <div className="loading-bar">
+            <div className="loading-progress"></div>
+          </div>
         </div>
 
         <style>{`
@@ -105,8 +111,28 @@ const AppRoutes = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
       <Route
+        path="/profile"
+        element={user ? <Profile /> : <Navigate to="/login" replace />}
+      />
+      <Route
         path="/dashboard"
         element={user ? <Dashboard /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/dashboard/campaigns/influencers"
+        element={
+          user ? <CampaignInfluencers /> : <Navigate to="/login" replace />
+        }
+      />
+      <Route
+        path="/dashboard/campaigns/recent"
+        element={user ? <CampaignRecent /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/dashboard/campaigns/platforms"
+        element={
+          user ? <CampaignPlatforms /> : <Navigate to="/login" replace />
+        }
       />
       <Route
         path="/builder"
@@ -118,11 +144,23 @@ const AppRoutes = () => {
       />
       <Route
         path="/work/emailSequence"
-        element={user ? <Navigate to="/builder?step=4" replace /> : <Navigate to="/signup" replace />}
+        element={
+          user ? (
+            <Navigate to="/builder?step=4" replace />
+          ) : (
+            <Navigate to="/signup" replace />
+          )
+        }
       />
       <Route
         path="/work/campaigns/chat"
-        element={user ? <Navigate to="/dashboard?section=inbox" replace /> : <Navigate to="/signup" replace />}
+        element={
+          user ? (
+            <Navigate to="/dashboard?section=inbox" replace />
+          ) : (
+            <Navigate to="/signup" replace />
+          )
+        }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
