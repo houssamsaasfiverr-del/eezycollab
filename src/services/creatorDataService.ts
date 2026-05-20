@@ -16,6 +16,13 @@ export interface CreatorProfile {
   email?: string;
 }
 
+type YoutubeSearchOptions = {
+  regionCode?: string;
+  countryCode?: string;
+  relevanceLanguage?: string;
+  requireNonTitleMatch?: boolean;
+};
+
 function parseHandle(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return '';
@@ -34,88 +41,143 @@ function formatNumber(value?: number): string {
   return String(value);
 }
 
-function generateBusinessEmail(displayName: string, handle: string): string {
-  // Generate a realistic business email based on the creator's name
-  const cleanName = displayName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, '')
-    .slice(0, 20);
-  
-  const cleanHandle = handle
-    .toLowerCase()
-    .replace('@', '')
-    .replace(/[^a-z0-9]/g, '')
-    .slice(0, 15);
-  
-  // Use handle as base, fallback to name
-  const emailBase = cleanHandle || cleanName;
-  
-  // Common business email domains
-  const domains = ['gmail.com', 'business.com', 'contact.com', 'media.com'];
-  const domain = domains[Math.floor(Math.random() * domains.length)];
-  
-  return `${emailBase}@${domain}`;
+function extractRealEmail(...sources: Array<string | undefined>): string | undefined {
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+  for (const source of sources) {
+    if (!source) continue;
+
+    const matches = source.match(emailRegex);
+    if (!matches || matches.length === 0) continue;
+
+    const exactEmail = matches.find(
+      (email) => !email.includes('youtube.com') && !email.includes('google.com'),
+    );
+
+    if (exactEmail) {
+      return exactEmail.toLowerCase();
+    }
+  }
+
+  return undefined;
 }
 
-async function fetchYoutubeCreators(query: string): Promise<CreatorProfile[]> {
+async function fetchYoutubeCreators(
+  query: string,
+  options: YoutubeSearchOptions = {},
+): Promise<CreatorProfile[]> {
   const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
   if (!apiKey) {
     throw new Error('Missing VITE_YOUTUBE_API_KEY in .env');
   }
 
-  const encodedQuery = encodeURIComponent(parseHandle(query));
+  const trimmedQuery = query.trim();
+  const encodedQuery = encodeURIComponent(parseHandle(trimmedQuery));
   if (!encodedQuery) return [];
 
-  const searchRes = await fetch(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodedQuery}&maxResults=50&key=${apiKey}`
-  );
+  const channelIdSet = new Set<string>();
+  const maxPagesToFetch = 8;
+  let pageToken: string | undefined;
 
-  if (!searchRes.ok) {
-    throw new Error('YouTube API request failed. Check API key and quota.');
+  for (let page = 0; page < maxPagesToFetch; page += 1) {
+    const searchParams = new URLSearchParams({
+      part: 'snippet',
+      type: 'channel',
+      q: parseHandle(trimmedQuery),
+      maxResults: '50',
+      key: apiKey,
+    });
+
+    if (options.regionCode) {
+      searchParams.set('regionCode', options.regionCode.toUpperCase());
+    }
+
+    if (options.relevanceLanguage) {
+      searchParams.set('relevanceLanguage', options.relevanceLanguage);
+    }
+
+    if (pageToken) {
+      searchParams.set('pageToken', pageToken);
+    }
+
+    const searchRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`,
+    );
+
+    if (!searchRes.ok) {
+      throw new Error('YouTube API request failed. Check API key and quota.');
+    }
+
+    const searchData = await searchRes.json();
+    (searchData.items || [])
+      .map((item: any) => item?.snippet?.channelId)
+      .filter((id: string | undefined): id is string => Boolean(id))
+      .forEach((id: string) => channelIdSet.add(id));
+
+    pageToken = searchData.nextPageToken;
+    if (!pageToken) break;
   }
 
-  const searchData = await searchRes.json();
-  const channelIds = (searchData.items || [])
-    .map((item: any) => item?.snippet?.channelId)
-    .filter((id: string | undefined): id is string => Boolean(id));
+  const channelIds = Array.from(channelIdSet);
 
   if (channelIds.length === 0) return [];
 
-  const channelsRes = await fetch(
-    `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds.join(',')}&key=${apiKey}`
-  );
+  const channelsDataItems: any[] = [];
+  for (let index = 0; index < channelIds.length; index += 50) {
+    const batchIds = channelIds.slice(index, index + 50);
+    const channelsRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${batchIds.join(',')}&key=${apiKey}`,
+    );
 
-  if (!channelsRes.ok) {
-    throw new Error('YouTube channel stats request failed.');
+    if (!channelsRes.ok) {
+      throw new Error('YouTube channel stats request failed.');
+    }
+
+    const channelsData = await channelsRes.json();
+    channelsDataItems.push(...(channelsData.items || []));
   }
 
-  const channelsData = await channelsRes.json();
+  const queryTokens = trimmedQuery
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  const normalizedCountry = options.countryCode?.toUpperCase();
 
-  return (channelsData.items || []).map((channel: any) => {
+  return channelsDataItems
+    .map((channel: any) => {
     const title = channel?.snippet?.title || 'YouTube Creator';
     const customUrl = channel?.snippet?.customUrl || title.replace(/\s+/g, '');
     const handle = parseHandle(customUrl); // Remove @ if it exists
     const followers = Number(channel?.statistics?.subscriberCount || 0);
     const views = Number(channel?.statistics?.viewCount || 0);
     const description = channel?.snippet?.description || '';
-    
-    // Extract email from description using regex
-    let businessEmail = '';
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
-    const emailMatches = description.match(emailRegex);
-    
-    if (emailMatches && emailMatches.length > 0) {
-      // Filter out common non-business emails and take the first valid one
-      businessEmail = emailMatches.find(email => 
-        !email.includes('youtube.com') && 
-        !email.includes('google.com')
-      ) || emailMatches[0];
+    const keywordText = String(
+      channel?.brandingSettings?.channel?.keywords || '',
+    );
+    const channelCountry = String(
+      channel?.brandingSettings?.channel?.country || '',
+    ).toUpperCase();
+    const email = extractRealEmail(description, keywordText, title, customUrl);
+
+    if (normalizedCountry) {
+      if (!channelCountry || channelCountry !== normalizedCountry) {
+        return null;
+      }
+    }
+
+    if (options.requireNonTitleMatch && queryTokens.length > 0) {
+      const descriptionMatch = queryTokens.some((token) =>
+        description.toLowerCase().includes(token),
+      );
+      const keywordMatch = queryTokens.some((token) =>
+        keywordText.toLowerCase().includes(token),
+      );
+
+      if (!descriptionMatch && !keywordMatch) {
+        return null;
+      }
     }
     
-    // Fallback to generated email if no real email found
-    const email = businessEmail || generateBusinessEmail(title, handle);
-
     return {
       id: channel.id,
       platform: 'YouTube' as const,
@@ -127,9 +189,12 @@ async function fetchYoutubeCreators(query: string): Promise<CreatorProfile[]> {
       followers,
       views,
       engagementRate: views > 0 && followers > 0 ? Number(((followers / views) * 100).toFixed(2)) : undefined,
-      email: email,
+      email,
     };
-  });
+    })
+    .filter((profile: CreatorProfile | null): profile is CreatorProfile =>
+      Boolean(profile),
+    );
 }
 
 async function fetchTikTokCreator(query: string): Promise<CreatorProfile[]> {
@@ -157,7 +222,6 @@ async function fetchTikTokCreator(query: string): Promise<CreatorProfile[]> {
       bio: data.title || 'TikTok creator profile',
       avatarUrl: data.thumbnail_url,
       profileUrl: data.author_url || url,
-      email: generateBusinessEmail(displayName, handle),
     },
   ];
 }
@@ -192,15 +256,18 @@ async function fetchInstagramCreator(query: string): Promise<CreatorProfile[]> {
       displayName: displayName,
       bio: data.title || 'Instagram creator profile',
       profileUrl: url,
-      email: generateBusinessEmail(displayName, handle),
     },
   ];
 }
 
-export async function fetchCreatorProfiles(platform: SocialPlatform, query: string): Promise<CreatorProfile[]> {
+export async function fetchCreatorProfiles(
+  platform: SocialPlatform,
+  query: string,
+  options: YoutubeSearchOptions = {},
+): Promise<CreatorProfile[]> {
   switch (platform) {
     case 'YouTube':
-      return fetchYoutubeCreators(query);
+      return fetchYoutubeCreators(query, options);
     case 'TikTok':
       return fetchTikTokCreator(query);
     case 'Instagram':
@@ -230,7 +297,7 @@ export async function fetchAIRecommendations(platform: SocialPlatform, descripti
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-  const prompt = `You are an influencer marketing expert. Recommend 50 real ${platform} influencers for a campaign with this description: "${description}" and hashtags: "${hashtags}".
+  const prompt = `You are an influencer marketing expert. Recommend 150 real ${platform} influencers for a campaign with this description: "${description}" and hashtags: "${hashtags}".
 Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@username"), "displayName", "bio" (short 1-sentence description), "followers" (estimated number), "email" (business email if available, format: name@domain.com). Do not include markdown formatting or backticks.`;
 
   try {
@@ -246,7 +313,7 @@ Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@user
       displayName: item.displayName || item.handle,
       bio: item.bio,
       followers: typeof item.followers === 'number' ? item.followers : parseInt(String(item.followers).replace(/[^0-9]/g, '')) || 0,
-      email: item.email || undefined,
+      email: extractRealEmail(String(item.email || '')),
       avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.displayName || item.handle)}&background=random&color=fff&size=150`,
       profileUrl: platform === 'YouTube' ? `https://youtube.com/${item.handle}` :
                   platform === 'TikTok' ? `https://tiktok.com/${item.handle}` :
@@ -259,15 +326,87 @@ Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@user
   }
 }
 
-export async function autoRecommendCreators(platform: SocialPlatform, description: string, hashtags: string): Promise<CreatorProfile[]> {
+type AutoRecommendOptions = {
+  language?: string;
+  regions?: string[];
+};
+
+function toYouTubeLanguageCode(language?: string): string | undefined {
+  if (!language) return undefined;
+
+  const normalized = language.trim().toLowerCase();
+  const languageMap: Record<string, string> = {
+    english: 'en',
+    spanish: 'es',
+    french: 'fr',
+    german: 'de',
+    italian: 'it',
+    portuguese: 'pt',
+    arabic: 'ar',
+    hindi: 'hi',
+    japanese: 'ja',
+    korean: 'ko',
+    chinese: 'zh',
+    dutch: 'nl',
+    turkish: 'tr',
+    russian: 'ru',
+  };
+
+  return languageMap[normalized] || normalized.slice(0, 2);
+}
+
+function buildRegionalQuery(description: string, hashtags: string, regions: string[] = [], language?: string): string {
+  const parts = [description.trim(), hashtags.trim()];
+
+  if (regions.length > 0) {
+    parts.push(`regions: ${regions.join(', ')}`);
+  }
+
+  if (language?.trim()) {
+    parts.push(`language: ${language.trim()}`);
+  }
+
+  return parts.filter(Boolean).join(' ').trim();
+}
+
+export async function autoRecommendCreators(
+  platform: SocialPlatform,
+  description: string,
+  hashtags: string,
+  options: AutoRecommendOptions = {},
+): Promise<CreatorProfile[]> {
+  const aiResults = await fetchAIRecommendations(
+    platform,
+    buildRegionalQuery(description, hashtags, options.regions, options.language),
+    hashtags,
+  );
+
   if (platform === 'YouTube') {
-    const query = hashtags.trim().split(',').join(' ') || description || 'tech review';
+    const query = [description.trim(), hashtags.trim()]
+      .filter(Boolean)
+      .join(' ') || 'tech review';
     try {
-      const results = await fetchYoutubeCreators(query);
-      if (results.length > 0) return results;
+      const results = await fetchYoutubeCreators(query, {
+        relevanceLanguage: toYouTubeLanguageCode(options.language),
+        requireNonTitleMatch: true,
+      });
+      if (results.length >= 150) return results;
+
+      const merged = [...results];
+      const seenHandles = new Set(
+        merged.map((profile) => profile.handle.toLowerCase()),
+      );
+      for (const profile of aiResults) {
+        if (seenHandles.has(profile.handle.toLowerCase())) continue;
+        merged.push(profile);
+        seenHandles.add(profile.handle.toLowerCase());
+        if (merged.length >= 150) break;
+      }
+
+      if (merged.length > 0) return merged;
     } catch (e) {
       console.error('YouTube search failed, falling back to AI', e);
     }
   }
-  return fetchAIRecommendations(platform, description, hashtags);
+  return aiResults;
 }

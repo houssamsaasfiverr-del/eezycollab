@@ -12,6 +12,7 @@ import Signup from "./pages/SignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Builder from "./pages/Builder";
+import InboxPage from "./pages/InboxPage";
 import CampaignInfluencers from "./pages/CampaignInfluencers";
 import CampaignPlatforms from "./pages/CampaignPlatforms";
 import CampaignRecent from "./pages/CampaignRecent";
@@ -137,6 +138,10 @@ const AppRoutes = () => {
       <Route
         path="/builder"
         element={user ? <Builder /> : <Navigate to="/signup" replace />}
+      />
+      <Route
+        path="/inbox"
+        element={user ? <InboxPage /> : <Navigate to="/login" replace />}
       />
       <Route
         path="/work/campaigns/create"

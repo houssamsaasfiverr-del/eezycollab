@@ -52,15 +52,26 @@ interface BuilderDraft {
   language: string;
   discoverCount: number;
   regions: string[];
-  followerRange: number;
+  followerRange?: number;
+  followerRangeMin: number;
+  followerRangeMax: number;
   hasEmail: boolean;
   hashtags: string;
   influencerInput: string;
   messageTemplate: string;
 }
 
+interface InfluencerGroup {
+  id: string;
+  name: string;
+  influencerIds: string[];
+  createdAt: string;
+}
+
 const defaultOutreachTemplate =
   "Hi {{name}},\n\nWe are launching a new campaign and would love to collaborate with you. If you are open, I can share the full brief and timelines.\n\nBest,\nCollabFree Team";
+
+const TEMPLATE_STORAGE_KEY = "collabfree:campaign-template";
 
 const stepLabels: Array<{ id: StepId; label: string }> = [
   { id: 1, label: "Set Up" },
@@ -89,7 +100,8 @@ export default function Builder() {
   const [language, setLanguage] = useState("English");
   const [discoverCount, setDiscoverCount] = useState(20);
   const [regions, setRegions] = useState<string[]>([]);
-  const [followerRange, setFollowerRange] = useState(50000);
+  const [followerRangeMin, setFollowerRangeMin] = useState(10000);
+  const [followerRangeMax, setFollowerRangeMax] = useState(50000);
   const [hasEmail, setHasEmail] = useState(true);
   const [hashtags, setHashtags] = useState("");
   const [influencerInput, setInfluencerInput] = useState("");
@@ -121,8 +133,42 @@ export default function Builder() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
-  const [savedInfluencers, setSavedInfluencers] = useState<CreatorProfile[]>([]);
+  const [savedInfluencers, setSavedInfluencers] = useState<CreatorProfile[]>(
+    [],
+  );
   const [savedInfluencersLoading, setSavedInfluencersLoading] = useState(false);
+  const [influencerGroups, setInfluencerGroups] = useState<InfluencerGroup[]>(
+    [],
+  );
+
+  useEffect(() => {
+    const rawTemplate = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!rawTemplate) return;
+
+    try {
+      const parsed = JSON.parse(rawTemplate) as Partial<{
+        subject: string;
+        body: string;
+      }>;
+
+      if (parsed.subject?.trim()) {
+        setEmailSubject(parsed.subject.trim());
+      }
+
+      if (parsed.body?.trim()) {
+        setMessageTemplate(parsed.body.trim());
+      }
+    } catch {
+      // Ignore malformed shared inbox templates.
+    }
+  }, []);
+  const [groupSelectMode, setGroupSelectMode] = useState<"single" | "multi">(
+    "single",
+  );
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [groupSelectedHandles, setGroupSelectedHandles] = useState<string[]>(
+    [],
+  );
 
   const [smtpModalOpen, setSmtpModalOpen] = useState(false);
   const [smtpConfigLoading, setSmtpConfigLoading] = useState(false);
@@ -230,6 +276,44 @@ export default function Builder() {
     void loadSavedInfluencers();
   }, [user]);
 
+  const groupsStorageKey = user
+    ? `savedInfluencerGroups:${user.uid}`
+    : "savedInfluencerGroups:guest";
+
+  useEffect(() => {
+    if (!user) {
+      setInfluencerGroups([]);
+      setSelectedGroupIds([]);
+      setGroupSelectedHandles([]);
+      return;
+    }
+    const raw = localStorage.getItem(groupsStorageKey);
+    if (!raw) {
+      setInfluencerGroups([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as InfluencerGroup[];
+      setInfluencerGroups(parsed);
+    } catch (error) {
+      console.warn("Failed to parse influencer groups", error);
+      setInfluencerGroups([]);
+    }
+  }, [groupsStorageKey, user]);
+
+  const savedInfluencerMap = useMemo(() => {
+    return new Map(savedInfluencers.map((profile) => [profile.id, profile]));
+  }, [savedInfluencers]);
+
+  const groupedInfluencers = useMemo(() => {
+    return influencerGroups.map((group) => ({
+      ...group,
+      influencers: group.influencerIds
+        .map((id) => savedInfluencerMap.get(id))
+        .filter((profile): profile is CreatorProfile => Boolean(profile)),
+    }));
+  }, [influencerGroups, savedInfluencerMap]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -313,11 +397,19 @@ export default function Builder() {
             typeof draft.discoverCount === "number" ? draft.discoverCount : 20,
           );
           setRegions(Array.isArray(draft.regions) ? draft.regions : []);
-          setFollowerRange(
-            typeof draft.followerRange === "number"
-              ? draft.followerRange
-              : 50000,
-          );
+          const loadedFollowerMin =
+            typeof draft.followerRangeMin === "number"
+              ? draft.followerRangeMin
+              : 10000;
+          const loadedFollowerMax =
+            typeof draft.followerRangeMax === "number"
+              ? draft.followerRangeMax
+              : typeof draft.followerRange === "number"
+                ? draft.followerRange
+                : 50000;
+
+          setFollowerRangeMin(loadedFollowerMin);
+          setFollowerRangeMax(Math.max(loadedFollowerMin, loadedFollowerMax));
           setHasEmail(
             typeof draft.hasEmail === "boolean" ? draft.hasEmail : true,
           );
@@ -355,6 +447,10 @@ export default function Builder() {
         platform,
         productDescription,
         hashtags,
+        {
+          language,
+          regions,
+        },
       );
       if (results.length === 0) {
         setCreatorError(
@@ -479,6 +575,60 @@ export default function Builder() {
     );
   };
 
+  const toggleGroupSelection = (groupId: string) => {
+    if (groupSelectMode === "single") {
+      setSelectedGroupIds((prev) => (prev[0] === groupId ? [] : [groupId]));
+      return;
+    }
+    setSelectedGroupIds((prev) =>
+      prev.includes(groupId)
+        ? prev.filter((id) => id !== groupId)
+        : [...prev, groupId],
+    );
+  };
+
+  useEffect(() => {
+    if (groupSelectMode !== "single") return;
+    if (selectedGroupIds.length <= 1) return;
+    setSelectedGroupIds([selectedGroupIds[0]]);
+  }, [groupSelectMode, selectedGroupIds]);
+
+  useEffect(() => {
+    const current = influencerInput
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const groupHandles = selectedGroupIds
+      .map((groupId) =>
+        groupedInfluencers.find((group) => group.id === groupId),
+      )
+      .filter(Boolean)
+      .flatMap((group) =>
+        (group?.influencers || []).map((profile) => profile.handle),
+      )
+      .filter(Boolean);
+
+    const uniqueGroupHandles = Array.from(new Set(groupHandles));
+    const withoutGroupHandles = current.filter(
+      (handle) => !groupSelectedHandles.includes(handle),
+    );
+    const mergedHandles = Array.from(
+      new Set([...withoutGroupHandles, ...uniqueGroupHandles]),
+    );
+    const nextValue = mergedHandles.join("\n");
+
+    if (nextValue !== influencerInput) {
+      setInfluencerInput(nextValue);
+    }
+    setGroupSelectedHandles(uniqueGroupHandles);
+  }, [
+    groupedInfluencers,
+    groupSelectedHandles,
+    influencerInput,
+    selectedGroupIds,
+  ]);
+
   const nextStep = () =>
     setStep((prev) => (prev < 5 ? ((prev + 1) as StepId) : prev));
   const prevStep = () =>
@@ -514,7 +664,9 @@ export default function Builder() {
     language,
     discoverCount,
     regions,
-    followerRange,
+    followerRange: followerRangeMax,
+    followerRangeMin,
+    followerRangeMax,
     hasEmail,
     hashtags,
     influencerInput,
@@ -584,8 +736,45 @@ export default function Builder() {
   const handleLaunchCampaign = async () => {
     const saved = await persistProject(true);
     if (saved) {
-      navigate("/dashboard");
+      window.location.assign("/dashboard?section=campaigns");
     }
+  };
+
+  const applyInboxTemplate = () => {
+    const rawTemplate = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!rawTemplate) {
+      setBulkSendStatus(
+        "No saved inbox template yet. Open Inbox to create one.",
+      );
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawTemplate) as Partial<{
+        subject: string;
+        body: string;
+      }>;
+
+      if (parsed.subject?.trim()) {
+        setEmailSubject(parsed.subject.trim());
+      }
+
+      if (parsed.body?.trim()) {
+        setMessageTemplate(parsed.body.trim());
+      }
+
+      setBulkSendStatus("Inbox template loaded into the contact step.");
+    } catch {
+      setBulkSendStatus("Saved inbox template could not be read.");
+    }
+  };
+
+  const goToCampaignDashboard = () => {
+    window.location.assign("/dashboard?section=campaigns");
+  };
+
+  const goToInbox = () => {
+    window.location.assign("/inbox");
   };
 
   const refreshInbox = async () => {
@@ -669,16 +858,13 @@ export default function Builder() {
   return (
     <div className="ec-builder-page">
       <aside className="ec-builder-sidebar">
-        <button
-          className="ec-builder-brand"
-          onClick={() => navigate("/dashboard")}
-        >
+        <button className="ec-builder-brand" onClick={goToCampaignDashboard}>
           <Sparkles size={17} />
           <span>CollabFree</span>
         </button>
 
         <div className="ec-builder-menu">
-          <button 
+          <button
             className={step === 3 ? "active" : ""}
             onClick={() => setStep(3)}
             title="Search and discover influencers"
@@ -699,6 +885,13 @@ export default function Builder() {
           >
             <MessageSquare size={15} /> Email
           </button>
+          <button
+            className={step === 5 ? "active" : ""}
+            onClick={() => setStep(5)}
+            title="Open your inbox and shared template settings"
+          >
+            <Mail size={15} /> Inbox
+          </button>
         </div>
 
         <div className="ec-builder-card">
@@ -714,7 +907,7 @@ export default function Builder() {
 
       <main className="ec-builder-main">
         <header className="ec-builder-head">
-          <button className="back" onClick={() => navigate("/dashboard")}>
+          <button className="back" onClick={goToCampaignDashboard}>
             <ArrowLeft size={14} /> Dashboard
           </button>
           <div className="ec-builder-title">
@@ -828,18 +1021,77 @@ export default function Builder() {
               </label>
 
               <label>
-                Follower range (max)
-                <input
-                  type="range"
-                  min={10000}
-                  max={500000}
-                  step={10000}
-                  value={followerRange}
-                  onChange={(event) =>
-                    setFollowerRange(Number(event.target.value))
-                  }
-                />
-                <small>Up to {followerRange.toLocaleString()} followers</small>
+                Follower range
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: "12px",
+                    marginTop: "8px",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#634f41",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      Minimum
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={followerRangeMin}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        const safeValue = Number.isFinite(nextValue)
+                          ? Math.max(0, nextValue)
+                          : 0;
+                        setFollowerRangeMin(
+                          Math.min(safeValue, followerRangeMax),
+                        );
+                      }}
+                      placeholder="Min followers"
+                    />
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#634f41",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      Maximum
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={followerRangeMax}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        const safeValue = Number.isFinite(nextValue)
+                          ? Math.max(0, nextValue)
+                          : 0;
+                        setFollowerRangeMax(
+                          Math.max(safeValue, followerRangeMin),
+                        );
+                      }}
+                      placeholder="Max followers"
+                    />
+                  </div>
+                </div>
+                <small>
+                  From {followerRangeMin.toLocaleString()} to{" "}
+                  {followerRangeMax.toLocaleString()} followers
+                </small>
               </label>
 
               <label className="ec-checkbox">
@@ -914,6 +1166,61 @@ export default function Builder() {
                 {platform} creators to shortlist.
               </p>
 
+              <div className="ec-group-selector">
+                <div className="ec-group-selector-head">
+                  <span>Use saved groups to shortlist</span>
+                  <div className="ec-group-controls">
+                    <button
+                      type="button"
+                      className="ec-group-clear"
+                      onClick={() => setSelectedGroupIds([])}
+                      disabled={selectedGroupIds.length === 0}
+                    >
+                      Clear
+                    </button>
+                    <div className="ec-group-mode">
+                      <button
+                        type="button"
+                        className={groupSelectMode === "single" ? "active" : ""}
+                        onClick={() => setGroupSelectMode("single")}
+                      >
+                        Single
+                      </button>
+                      <button
+                        type="button"
+                        className={groupSelectMode === "multi" ? "active" : ""}
+                        onClick={() => setGroupSelectMode("multi")}
+                      >
+                        Multi
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {groupedInfluencers.length === 0 ? (
+                  <p className="ec-group-selector-empty">
+                    No groups yet. Create a group in Saved Lists.
+                  </p>
+                ) : (
+                  <div className="ec-group-chips">
+                    {groupedInfluencers.map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        className={
+                          selectedGroupIds.includes(group.id) ? "active" : ""
+                        }
+                        onClick={() => toggleGroupSelection(group.id)}
+                        disabled={group.influencers.length === 0}
+                      >
+                        {group.name}
+                        <span>{group.influencers.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Search Bar */}
               <div className="ec-search-bar">
                 <Search size={16} />
@@ -940,18 +1247,38 @@ export default function Builder() {
               )}
 
               {creatorLoading && (
-                <div style={{ textAlign: "center", padding: "40px", color: "#7b6556" }}>
-                  <Loader2 size={24} className="spin" style={{ margin: "0 auto 12px" }} />
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "40px",
+                    color: "#7b6556",
+                  }}
+                >
+                  <Loader2
+                    size={24}
+                    className="spin"
+                    style={{ margin: "0 auto 12px" }}
+                  />
                   <p>Loading influencers...</p>
                 </div>
               )}
 
-              {!creatorLoading && filteredCreators.length === 0 && creatorResults.length === 0 && (
-                <div style={{ textAlign: "center", padding: "40px", color: "#7b6556" }}>
-                  <Users size={32} style={{ margin: "0 auto 12px" }} />
-                  <p>Click "Refresh Recommendations" to discover influencers</p>
-                </div>
-              )}
+              {!creatorLoading &&
+                filteredCreators.length === 0 &&
+                creatorResults.length === 0 && (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: "#7b6556",
+                    }}
+                  >
+                    <Users size={32} style={{ margin: "0 auto 12px" }} />
+                    <p>
+                      Click "Refresh Recommendations" to discover influencers
+                    </p>
+                  </div>
+                )}
 
               {!creatorLoading && filteredCreators.length > 0 && (
                 <>
@@ -963,11 +1290,23 @@ export default function Builder() {
                       marginBottom: "12px",
                     }}
                   >
-                    <span style={{ fontSize: "13px", color: "#7b6556", fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#7b6556",
+                        fontWeight: 600,
+                      }}
+                    >
                       {filteredCreators.length} results
                     </span>
                     {totalPages > 1 && (
-                      <span style={{ fontSize: "13px", color: "#7b6556", fontWeight: 600 }}>
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          color: "#7b6556",
+                          fontWeight: 600,
+                        }}
+                      >
                         Page {currentPage} of {totalPages}
                       </span>
                     )}
@@ -975,20 +1314,28 @@ export default function Builder() {
 
                   <div className="ec-results-grid">
                     {paginatedCreators.map((profile) => {
-                      const isShortlisted = parsedInfluencers.includes(profile.handle);
-                      
+                      const isShortlisted = parsedInfluencers.includes(
+                        profile.handle,
+                      );
+
                       return (
                         <article key={profile.id}>
                           <div className="head">
                             <div>
                               <h3>{profile.displayName}</h3>
                               <p>{profile.handle}</p>
-                              {profile.email && (
+                              {profile.email ? (
                                 <p className="ec-card-email">
                                   <Mail size={12} />
                                   {profile.email}
                                 </p>
-                              )}
+                              ) : profile.profileUrl ? (
+                                <p className="ec-card-email">
+                                  <Mail size={12} />
+                                  No public email found. Open the channel and
+                                  check About/Contact info.
+                                </p>
+                              ) : null}
                             </div>
                             {profile.avatarUrl && (
                               <img
@@ -1020,7 +1367,7 @@ export default function Builder() {
                                 target="_blank"
                                 rel="noreferrer"
                               >
-                                Open
+                                Open channel
                                 <ExternalLink size={13} />
                               </a>
                             )}
@@ -1030,98 +1377,141 @@ export default function Builder() {
                     })}
                   </div>
 
-                {totalPages > 1 && (
-                  <div className="ec-builder-pagination">
-                    <button
-                      type="button"
-                      className="ec-page-btn"
-                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft size={16} />
-                      Previous
-                    </button>
+                  {totalPages > 1 && (
+                    <div className="ec-builder-pagination">
+                      <button
+                        type="button"
+                        className="ec-page-btn"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(1, prev - 1))
+                        }
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft size={16} />
+                        Previous
+                      </button>
 
-                    <div className="ec-page-numbers">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1)
-                        .filter((page) => {
-                          return (
-                            page === 1 ||
-                            page === totalPages ||
-                            Math.abs(page - currentPage) <= 1
-                          );
-                        })
-                        .map((page, index, array) => {
-                          const prevPage = array[index - 1];
-                          const showEllipsis = prevPage && page - prevPage > 1;
+                      <div className="ec-page-numbers">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((page) => {
+                            return (
+                              page === 1 ||
+                              page === totalPages ||
+                              Math.abs(page - currentPage) <= 1
+                            );
+                          })
+                          .map((page, index, array) => {
+                            const prevPage = array[index - 1];
+                            const showEllipsis =
+                              prevPage && page - prevPage > 1;
 
-                          return (
-                            <div key={page} style={{ display: "flex", gap: "4px" }}>
-                              {showEllipsis && (
-                                <span className="ec-page-ellipsis">...</span>
-                              )}
-                              <button
-                                type="button"
-                                className={`ec-page-num ${page === currentPage ? "active" : ""}`}
-                                onClick={() => setCurrentPage(page)}
+                            return (
+                              <div
+                                key={page}
+                                style={{ display: "flex", gap: "4px" }}
                               >
-                                {page}
-                              </button>
-                            </div>
-                          );
-                        })}
-                    </div>
+                                {showEllipsis && (
+                                  <span className="ec-page-ellipsis">...</span>
+                                )}
+                                <button
+                                  type="button"
+                                  className={`ec-page-num ${page === currentPage ? "active" : ""}`}
+                                  onClick={() => setCurrentPage(page)}
+                                >
+                                  {page}
+                                </button>
+                              </div>
+                            );
+                          })}
+                      </div>
 
-                    <button
-                      type="button"
-                      className="ec-page-btn"
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                      }
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                )}
-              </>
+                      <button
+                        type="button"
+                        className="ec-page-btn"
+                        onClick={() =>
+                          setCurrentPage((prev) =>
+                            Math.min(totalPages, prev + 1),
+                          )
+                        }
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
-              <div style={{ marginTop: "24px", paddingTop: "24px", borderTop: "2px solid #f2e0d0" }}>
-                <h3 style={{ fontSize: "18px", marginBottom: "12px", color: "#2b221d" }}>
+              <div
+                style={{
+                  marginTop: "24px",
+                  paddingTop: "24px",
+                  borderTop: "2px solid #f2e0d0",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: "18px",
+                    marginBottom: "12px",
+                    color: "#2b221d",
+                  }}
+                >
                   Selected Influencers for Campaign
                 </h3>
-                <p style={{ color: "#735f50", fontSize: "14px", marginBottom: "16px" }}>
-                  These influencers will be contacted via email. Click the remove button to unselect.
+                <p
+                  style={{
+                    color: "#735f50",
+                    fontSize: "14px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  These influencers will be contacted via email. Click the
+                  remove button to unselect.
                 </p>
 
                 {parsedInfluencers.length === 0 ? (
-                  <div style={{ 
-                    textAlign: "center", 
-                    padding: "40px", 
-                    background: "#fffbf7",
-                    border: "1px solid #f2e0d0",
-                    borderRadius: "12px",
-                    color: "#7b6556" 
-                  }}>
-                    <Users size={32} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
-                    <p style={{ fontWeight: 600 }}>No influencers selected yet</p>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      background: "#fffbf7",
+                      border: "1px solid #f2e0d0",
+                      borderRadius: "12px",
+                      color: "#7b6556",
+                    }}
+                  >
+                    <Users
+                      size={32}
+                      style={{ margin: "0 auto 12px", opacity: 0.5 }}
+                    />
+                    <p style={{ fontWeight: 600 }}>
+                      No influencers selected yet
+                    </p>
                     <p style={{ fontSize: "13px", marginTop: "8px" }}>
-                      Click "Add to shortlist" on influencer cards above to select them
+                      Click "Add to shortlist" on influencer cards above to
+                      select them
                     </p>
                   </div>
                 ) : (
                   <>
-                    <div className="ec-template-preview" style={{ marginBottom: "16px" }}>
+                    <div
+                      className="ec-template-preview"
+                      style={{ marginBottom: "16px" }}
+                    >
                       <Users size={16} />
-                      <span>{parsedInfluencers.length} influencer{parsedInfluencers.length !== 1 ? 's' : ''} selected</span>
+                      <span>
+                        {parsedInfluencers.length} influencer
+                        {parsedInfluencers.length !== 1 ? "s" : ""} selected
+                      </span>
                     </div>
 
                     <div className="ec-shortlist-chips">
                       {parsedInfluencers.map((handle) => {
-                        const profile = creatorResults.find(c => c.handle === handle);
-                        
+                        const profile = creatorResults.find(
+                          (c) => c.handle === handle,
+                        );
+
                         return (
                           <div key={handle} className="ec-chip">
                             {profile?.avatarUrl && (
@@ -1137,7 +1527,9 @@ export default function Builder() {
                             <button
                               type="button"
                               onClick={() => {
-                                const updated = parsedInfluencers.filter(h => h !== handle);
+                                const updated = parsedInfluencers.filter(
+                                  (h) => h !== handle,
+                                );
                                 setInfluencerInput(updated.join("\n"));
                               }}
                               className="ec-chip-remove"
@@ -1197,7 +1589,14 @@ export default function Builder() {
 
               <label>
                 Recipients (one per line)
-                <div style={{ display: "flex", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    marginBottom: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -1210,10 +1609,14 @@ export default function Builder() {
                       padding: "6px 12px",
                       borderRadius: "8px",
                       fontSize: "12px",
-                      background: parsedInfluencers.length > 0 ? "#f57c24" : "#ccc",
+                      background:
+                        parsedInfluencers.length > 0 ? "#f57c24" : "#ccc",
                       color: "#fff",
                       border: "none",
-                      cursor: parsedInfluencers.length > 0 ? "pointer" : "not-allowed",
+                      cursor:
+                        parsedInfluencers.length > 0
+                          ? "pointer"
+                          : "not-allowed",
                       fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
@@ -1227,19 +1630,27 @@ export default function Builder() {
                     type="button"
                     onClick={() => {
                       if (savedInfluencers.length > 0) {
-                        const handles = savedInfluencers.map(inf => inf.handle);
+                        const handles = savedInfluencers.map(
+                          (inf) => inf.handle,
+                        );
                         setRecipientInput(handles.join("\n"));
                       }
                     }}
-                    disabled={savedInfluencersLoading || savedInfluencers.length === 0}
+                    disabled={
+                      savedInfluencersLoading || savedInfluencers.length === 0
+                    }
                     style={{
                       padding: "6px 12px",
                       borderRadius: "8px",
                       fontSize: "12px",
-                      background: savedInfluencers.length > 0 ? "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)" : "#ccc",
+                      background:
+                        savedInfluencers.length > 0
+                          ? "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)"
+                          : "#ccc",
                       color: "#fff",
                       border: "none",
-                      cursor: savedInfluencers.length > 0 ? "pointer" : "not-allowed",
+                      cursor:
+                        savedInfluencers.length > 0 ? "pointer" : "not-allowed",
                       fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
@@ -1317,6 +1728,20 @@ export default function Builder() {
                 >
                   {inboxLoading ? "Refreshing..." : "Refresh Inbox"}
                 </button>
+                <button
+                  type="button"
+                  className="ec-refresh-btn"
+                  onClick={applyInboxTemplate}
+                >
+                  Use inbox template
+                </button>
+                <button
+                  type="button"
+                  className="ec-refresh-btn"
+                  onClick={goToInbox}
+                >
+                  Open inbox page
+                </button>
               </div>
 
               {bulkSendStatus && (
@@ -1332,6 +1757,17 @@ export default function Builder() {
                 This page combines your outgoing sends, delivery events, and
                 inbox-style status updates.
               </p>
+
+              <div
+                className="ec-template-preview"
+                style={{ marginBottom: "16px" }}
+              >
+                <Mail size={16} />
+                <span>
+                  Shared inbox template is available in the new Inbox page and
+                  is used here when you open Step 4.
+                </span>
+              </div>
 
               {inboxError && (
                 <div className="ec-lookup-error">{inboxError}</div>
@@ -1756,37 +2192,58 @@ export default function Builder() {
         .ec-stepper {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 8px;
+          gap: 10px;
+          padding: 12px;
+          border-radius: 18px;
+          background: linear-gradient(135deg, rgba(255, 248, 241, 0.95), #fff);
+          border: 1px solid #eed9c6;
+          box-shadow: 0 10px 24px rgba(197, 149, 106, 0.08);
         }
 
         .ec-step {
           border: 1px solid #eadaca;
-          border-radius: 12px;
-          padding: 10px;
-          background: #fff;
+          border-radius: 14px;
+          padding: 12px 10px;
+          background: linear-gradient(180deg, #fff, #fffaf5);
           color: #665446;
-          font-weight: 700;
+          font-weight: 800;
           display: inline-flex;
           align-items: center;
           gap: 8px;
           cursor: pointer;
           justify-content: center;
+          min-height: 56px;
+          box-shadow: 0 2px 8px rgba(191, 145, 104, 0.06);
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease,
+            background 0.2s ease;
+        }
+
+        .ec-step:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 18px rgba(191, 145, 104, 0.12);
+          border-color: #e6c7ad;
         }
 
         .ec-step span {
-          width: 22px;
-          height: 22px;
+          width: 26px;
+          height: 26px;
           border-radius: 999px;
           background: #f6eee5;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           font-size: 12px;
+          font-weight: 900;
+          color: #7d6656;
+          flex-shrink: 0;
         }
 
         .ec-step.active {
-          border-color: #f5b787;
+          border-color: #f47f2c;
           color: #d05b1f;
+          background: linear-gradient(135deg, #fff7ef, #fff);
+          box-shadow: 0 12px 24px rgba(244, 125, 33, 0.12);
+          transform: translateY(-1px);
         }
 
         .ec-step.active span,
@@ -1797,6 +2254,7 @@ export default function Builder() {
 
         .ec-step.done {
           border-color: #f2c8a5;
+          background: linear-gradient(180deg, #fff, #fffdf8);
         }
 
         .ec-progress {
@@ -2076,6 +2534,124 @@ export default function Builder() {
           margin-bottom: 16px;
         }
 
+        .ec-group-selector {
+          border: 1px solid #ead7c6;
+          border-radius: 12px;
+          background: #fffaf4;
+          padding: 12px;
+          display: grid;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .ec-group-selector-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          font-weight: 700;
+          color: #6d5c4f;
+          font-size: 13px;
+        }
+
+        .ec-group-controls {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .ec-group-clear {
+          border: 1px solid #ead7c6;
+          background: #fff;
+          color: #7a6557;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .ec-group-clear:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .ec-group-mode {
+          display: inline-flex;
+          gap: 6px;
+          background: #fff;
+          border: 1px solid #ead7c6;
+          padding: 4px;
+          border-radius: 999px;
+        }
+
+        .ec-group-mode button {
+          border: 0;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 800;
+          background: transparent;
+          color: #7a6557;
+          cursor: pointer;
+        }
+
+        .ec-group-mode button.active {
+          background: linear-gradient(135deg, #f57b24, #df5124);
+          color: #fff;
+        }
+
+        .ec-group-selector-empty {
+          margin: 0;
+          font-size: 12px;
+          color: #8b7768;
+          font-weight: 600;
+        }
+
+        .ec-group-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .ec-group-chips button {
+          border: 1px solid #e8d8c7;
+          background: #fff;
+          border-radius: 999px;
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #6b584b;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+        }
+
+        .ec-group-chips button span {
+          background: #f2e0d0;
+          border-radius: 999px;
+          padding: 2px 6px;
+          font-size: 11px;
+          font-weight: 800;
+        }
+
+        .ec-group-chips button.active {
+          background: #1f7a40;
+          border-color: #1f7a40;
+          color: #fff;
+        }
+
+        .ec-group-chips button.active span {
+          background: rgba(255, 255, 255, 0.2);
+          color: #fff;
+        }
+
+        .ec-group-chips button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
         .ec-search-bar svg {
           color: #7b6556;
           flex-shrink: 0;
@@ -2244,7 +2820,7 @@ export default function Builder() {
         }
 
         .ec-config-btn-small {
-          border: 1px solid #e8d7c6;
+          border: 1px solid #f97316;
           border-radius: 8px;
           padding: 6px 12px;
           font-size: 12px;
@@ -2253,16 +2829,16 @@ export default function Builder() {
           align-items: center;
           gap: 6px;
           cursor: pointer;
-          background: #fffbf7;
-          color: #634f41;
+          background: #f97316;
+          color: #ffffff;
           transition: all 0.2s ease;
           flex-shrink: 0;
         }
 
         .ec-config-btn-small:hover {
-          background: #fff;
-          border-color: #d8c7b6;
-          color: #4f3f32;
+          background: #fb923c;
+          border-color: #fb923c;
+          color: #ffffff;
         }
 
         .ec-delivery-status {

@@ -12,6 +12,7 @@ import {
   Crown,
   Loader2,
   LogOut,
+  Mail,
   MessageSquare,
   Plus,
   Sparkles,
@@ -52,6 +53,13 @@ interface ProjectItem {
   files: Array<{ name: string; content?: string }>;
   createdAt: string;
   lastModified: string;
+}
+
+interface InfluencerGroup {
+  id: string;
+  name: string;
+  influencerIds: string[];
+  createdAt: string;
 }
 
 type DashboardSection = "campaigns" | "lists" | "inbox" | "analytics";
@@ -100,6 +108,22 @@ export default function Dashboard({
   const [directoryBioKeywords, setDirectoryBioKeywords] = useState("");
   const [directoryDescription, setDirectoryDescription] = useState("");
   const [directoryProductUrl, setDirectoryProductUrl] = useState("");
+  const [directoryRegion, setDirectoryRegion] = useState("");
+  const [directoryCountry, setDirectoryCountry] = useState("");
+  const [directoryLanguage, setDirectoryLanguage] = useState("");
+  const [selectedInfluencer, setSelectedInfluencer] =
+    useState<CreatorProfile | null>(null);
+  const [influencerGroups, setInfluencerGroups] = useState<InfluencerGroup[]>(
+    [],
+  );
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupModalProfile, setGroupModalProfile] =
+    useState<CreatorProfile | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<InfluencerGroup | null>(
+    null,
+  );
+  const [groupNameInput, setGroupNameInput] = useState("");
+  const [groupError, setGroupError] = useState("");
   const [directoryMinFollowers, setDirectoryMinFollowers] = useState(0);
   const [directoryMaxFollowers, setDirectoryMaxFollowers] = useState(1000000);
   const [directorySort, setDirectorySort] = useState<
@@ -116,6 +140,9 @@ export default function Dashboard({
     [],
   );
   const [savedInfluencersLoading, setSavedInfluencersLoading] = useState(false);
+  const [savedInfluencersHydrated, setSavedInfluencersHydrated] =
+    useState(false);
+  const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
 
   // Load saved influencers from Supabase
   const loadSavedInfluencers = async () => {
@@ -152,6 +179,7 @@ export default function Dashboard({
       console.error("Failed to load saved influencers:", error);
     } finally {
       setSavedInfluencersLoading(false);
+      setSavedInfluencersHydrated(true);
     }
   };
 
@@ -160,35 +188,119 @@ export default function Dashboard({
     void loadSavedInfluencers();
   }, [user]);
 
-  const saveInfluencer = async (profile: CreatorProfile) => {
+  const groupsStorageKey = user
+    ? `savedInfluencerGroups:${user.uid}`
+    : "savedInfluencerGroups:guest";
+
+  const persistGroups = (nextGroups: InfluencerGroup[]) => {
+    setInfluencerGroups(nextGroups);
+    if (user) {
+      localStorage.setItem(groupsStorageKey, JSON.stringify(nextGroups));
+    }
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setInfluencerGroups([]);
+      return;
+    }
+    const raw = localStorage.getItem(groupsStorageKey);
+    if (!raw) {
+      setInfluencerGroups([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as InfluencerGroup[];
+      setInfluencerGroups(parsed);
+    } catch (error) {
+      console.warn("Failed to parse influencer groups", error);
+      setInfluencerGroups([]);
+    }
+  }, [groupsStorageKey, user]);
+
+  useEffect(() => {
     if (!user) return;
+    if (!savedInfluencersHydrated) return;
+    if (influencerGroups.length === 0) return;
+    const savedIds = new Set(savedInfluencers.map((p) => p.id));
+    pendingGroupIds.forEach((id) => savedIds.add(id));
+    const nextGroups = influencerGroups.map((group) => ({
+      ...group,
+      influencerIds: group.influencerIds.filter((id) => savedIds.has(id)),
+    }));
+    const changed = nextGroups.some(
+      (group, index) =>
+        group.influencerIds.length !==
+        influencerGroups[index].influencerIds.length,
+    );
+    if (changed) {
+      persistGroups(nextGroups);
+    }
+  }, [
+    influencerGroups,
+    pendingGroupIds,
+    savedInfluencers,
+    savedInfluencersHydrated,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (pendingGroupIds.length === 0) return;
+    const savedIds = new Set(savedInfluencers.map((p) => p.id));
+    setPendingGroupIds((prev) => prev.filter((id) => !savedIds.has(id)));
+  }, [pendingGroupIds.length, savedInfluencers]);
+
+  const saveInfluencer = async (profile: CreatorProfile) => {
+    if (!user) return false;
 
     // Check if already saved
     if (savedInfluencers.some((p) => p.id === profile.id)) {
-      return;
+      return true;
     }
 
+    const safeHandle =
+      profile.handle?.trim() || profile.displayName?.trim() || profile.id;
+    const safeDisplayName =
+      profile.displayName?.trim() || profile.handle?.trim() || "Creator";
+    const maxInt = 2147483647;
+    const normalizeInt = (value?: number) => {
+      if (value === undefined || value === null) return null;
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0) return null;
+      return Math.min(Math.floor(numeric), maxInt);
+    };
+    const safeFollowers = normalizeInt(profile.followers);
+    const safeViews = normalizeInt(profile.views);
+
     try {
-      const { error } = await supabase.from("saved_influencers").insert({
-        user_id: user.uid,
-        influencer_id: profile.id,
-        platform: profile.platform,
-        handle: profile.handle,
-        display_name: profile.displayName,
-        bio: profile.bio || null,
-        avatar_url: profile.avatarUrl || null,
-        profile_url: profile.profileUrl || null,
-        followers: profile.followers || null,
-        views: profile.views || null,
-        engagement_rate: profile.engagementRate || null,
-      });
+      const { error } = await supabase.from("saved_influencers").upsert(
+        {
+          user_id: user.uid,
+          influencer_id: profile.id,
+          platform: profile.platform,
+          handle: safeHandle,
+          display_name: safeDisplayName,
+          bio: profile.bio || null,
+          avatar_url: profile.avatarUrl || null,
+          profile_url: profile.profileUrl || null,
+          followers: safeFollowers,
+          views: safeViews,
+          engagement_rate: profile.engagementRate || null,
+        },
+        {
+          onConflict: "user_id,influencer_id",
+          ignoreDuplicates: true,
+        },
+      );
 
       if (error) throw error;
 
       // Add to local state
       setSavedInfluencers((prev) => [profile, ...prev]);
+      return true;
     } catch (error) {
       console.error("Failed to save influencer:", error);
+      return false;
     }
   };
 
@@ -201,14 +313,117 @@ export default function Dashboard({
         .delete()
         .eq("user_id", user.uid)
         .eq("influencer_id", profileId);
-
       if (error) throw error;
 
       // Remove from local state
       setSavedInfluencers((prev) => prev.filter((p) => p.id !== profileId));
+      if (influencerGroups.length > 0) {
+        const nextGroups = influencerGroups.map((group) => ({
+          ...group,
+          influencerIds: group.influencerIds.filter((id) => id !== profileId),
+        }));
+        persistGroups(nextGroups);
+      }
     } catch (error) {
       console.error("Failed to unsave influencer:", error);
     }
+  };
+
+  const openGroupModal = (profile: CreatorProfile | null) => {
+    setGroupModalProfile(profile);
+    setGroupModalOpen(true);
+    setSelectedInfluencer(null);
+    setGroupNameInput("");
+    setGroupError("");
+  };
+
+  const closeGroupModal = () => {
+    setGroupModalOpen(false);
+    setGroupModalProfile(null);
+    setGroupNameInput("");
+    setGroupError("");
+  };
+
+  const closeGroupDetails = () => {
+    setSelectedGroup(null);
+  };
+
+  const createGroup = async () => {
+    const name = groupNameInput.trim();
+    if (!name) {
+      setGroupError("Enter a group name.");
+      return;
+    }
+    const exists = influencerGroups.some(
+      (group) => group.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      setGroupError("Group name already exists.");
+      return;
+    }
+    const newGroup: InfluencerGroup = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      name,
+      influencerIds: [],
+      createdAt: new Date().toISOString(),
+    };
+    if (groupModalProfile) {
+      setPendingGroupIds((prev) =>
+        prev.includes(groupModalProfile.id)
+          ? prev
+          : [...prev, groupModalProfile.id],
+      );
+      const saved = await saveInfluencer(groupModalProfile);
+      if (!saved) {
+        setGroupError("Could not save influencer. Try again.");
+        return;
+      }
+      const nextGroups = [
+        { ...newGroup, influencerIds: [groupModalProfile.id] },
+        ...influencerGroups,
+      ];
+      persistGroups(nextGroups);
+      closeGroupModal();
+    } else {
+      const nextGroups = [newGroup, ...influencerGroups];
+      persistGroups(nextGroups);
+      closeGroupModal();
+    }
+  };
+
+  const saveInfluencerToGroup = async (groupId: string) => {
+    if (!groupModalProfile) return;
+    setPendingGroupIds((prev) =>
+      prev.includes(groupModalProfile.id)
+        ? prev
+        : [...prev, groupModalProfile.id],
+    );
+    const saved = await saveInfluencer(groupModalProfile);
+    if (!saved) {
+      setGroupError("Could not save influencer. Try again.");
+      return;
+    }
+    const nextGroups = influencerGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      if (group.influencerIds.includes(groupModalProfile.id)) return group;
+      return {
+        ...group,
+        influencerIds: [groupModalProfile.id, ...group.influencerIds],
+      };
+    });
+    persistGroups(nextGroups);
+    closeGroupModal();
+  };
+
+  const removeInfluencerFromGroup = (groupId: string, profileId: string) => {
+    const nextGroups = influencerGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      return {
+        ...group,
+        influencerIds: group.influencerIds.filter((id) => id !== profileId),
+      };
+    });
+    persistGroups(nextGroups);
   };
 
   const isInfluencerSaved = (profileId: string) => {
@@ -257,43 +472,75 @@ export default function Dashboard({
     }
 
     const hydrate = async () => {
-      const { data } = await supabase
-        .from("user_credits")
-        .select("*")
-        .eq("user_id", user.uid)
-        .maybeSingle();
+      try {
+        const { data } = await supabase
+          .from("user_credits")
+          .select("*")
+          .eq("user_id", user.uid)
+          .maybeSingle();
 
-      const { data: projectsData } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("user_id", user.uid)
-        .order("last_modified", { ascending: false });
+        const { data: projectsData } = await supabase
+          .from("projects")
+          .select("*")
+          .eq("user_id", user.uid)
+          .order("last_modified", { ascending: false });
 
-      if (data) {
+        const fallbackUserData: UserData = {
+          email: user.email || "",
+          displayName: user.displayName || "Creator team",
+          plan: "free",
+          credits: 0,
+          maxCredits: 0,
+          dailyCreditsUsed: 0,
+          dailyLimit: 5,
+          createdAt: undefined,
+        };
+
+        if (data) {
+          setUserData({
+            email: data.email || user.email || "",
+            displayName:
+              data.display_name || user.displayName || "Creator team",
+            plan: data.plan || "free",
+            credits: data.credits_remaining || data.credits || 0,
+            maxCredits: data.max_credits || data.total_credits || 0,
+            dailyCreditsUsed: data.daily_credits_used || 0,
+            dailyLimit: data.daily_limit || 5,
+            createdAt: data.created_at,
+          });
+        } else {
+          setUserData(fallbackUserData);
+        }
+
+        const parsedProjects: ProjectItem[] = (projectsData || []).map(
+          (row) => ({
+            id: row.id,
+            name: row.name || "Untitled Project",
+            firstPrompt: row.first_prompt || "",
+            files: Array.isArray(row.files) ? row.files : [],
+            createdAt: row.created_at || new Date().toISOString(),
+            lastModified:
+              row.last_modified || row.created_at || new Date().toISOString(),
+          }),
+        );
+
+        setProjects(parsedProjects);
+      } catch (error) {
+        console.error("Failed to hydrate dashboard:", error);
         setUserData({
-          email: data.email || user.email || "",
-          displayName: data.display_name || user.displayName || "Creator team",
-          plan: data.plan || "free",
-          credits: data.credits_remaining || data.credits || 0,
-          maxCredits: data.max_credits || data.total_credits || 0,
-          dailyCreditsUsed: data.daily_credits_used || 0,
-          dailyLimit: data.daily_limit || 5,
-          createdAt: data.created_at,
+          email: user.email || "",
+          displayName: user.displayName || "Creator team",
+          plan: "free",
+          credits: 0,
+          maxCredits: 0,
+          dailyCreditsUsed: 0,
+          dailyLimit: 5,
+          createdAt: undefined,
         });
+        setProjects([]);
+      } finally {
+        setLoading(false);
       }
-
-      const parsedProjects: ProjectItem[] = (projectsData || []).map((row) => ({
-        id: row.id,
-        name: row.name || "Untitled Project",
-        firstPrompt: row.first_prompt || "",
-        files: Array.isArray(row.files) ? row.files : [],
-        createdAt: row.created_at || new Date().toISOString(),
-        lastModified:
-          row.last_modified || row.created_at || new Date().toISOString(),
-      }));
-
-      setProjects(parsedProjects);
-      setLoading(false);
     };
 
     void hydrate();
@@ -334,6 +581,13 @@ export default function Dashboard({
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/");
+  };
+
+  const goToDashboardOverview = () => {
+    setActiveSection("campaigns");
+    setCampaignSubdivision("recent");
+    setCampaignNavOpen(true);
+    navigate("/dashboard?section=campaigns", { replace: true });
   };
 
   const refreshInbox = async () => {
@@ -573,23 +827,49 @@ export default function Dashboard({
 
     try {
       const keyword = directoryKeyword.trim();
+      const bioKeyword = directoryBioKeywords.trim();
+      const regionCode = directoryRegion.trim();
+      const countryCode = directoryCountry.trim();
+      const relevanceLanguage = directoryLanguage.trim();
       const description = [
         directoryDescription.trim(),
         directoryProductUrl.trim(),
       ]
         .filter(Boolean)
         .join("\n");
+      const combinedQuery = [keyword, bioKeyword, directoryDescription.trim()]
+        .filter(Boolean)
+        .join(" ");
       const shouldDirectFetch =
         keyword.startsWith("@") ||
         keyword.startsWith("http") ||
         keyword.includes("instagram.com") ||
         keyword.includes("tiktok.com") ||
         keyword.includes("youtube.com");
+      const shouldYoutubeKeywordSearch =
+        directoryPlatform === "YouTube" && combinedQuery.length > 0;
+
+      const youtubeOptions = {
+        regionCode: regionCode || undefined,
+        countryCode: countryCode || undefined,
+        relevanceLanguage: relevanceLanguage || undefined,
+        requireNonTitleMatch: true,
+      };
 
       let results: CreatorProfile[] = [];
 
-      if (shouldDirectFetch) {
-        results = await fetchCreatorProfiles(directoryPlatform, keyword);
+      if (shouldYoutubeKeywordSearch) {
+        results = await fetchCreatorProfiles(
+          "YouTube",
+          combinedQuery,
+          youtubeOptions,
+        );
+      } else if (shouldDirectFetch) {
+        results = await fetchCreatorProfiles(
+          directoryPlatform,
+          keyword,
+          directoryPlatform === "YouTube" ? youtubeOptions : undefined,
+        );
       }
 
       if (results.length === 0) {
@@ -644,6 +924,19 @@ export default function Dashboard({
 
     return Array.from(handles);
   }, [projects]);
+
+  const savedInfluencerMap = useMemo(() => {
+    return new Map(savedInfluencers.map((profile) => [profile.id, profile]));
+  }, [savedInfluencers]);
+
+  const groupedInfluencers = useMemo(() => {
+    return influencerGroups.map((group) => ({
+      ...group,
+      influencers: group.influencerIds
+        .map((id) => savedInfluencerMap.get(id))
+        .filter((profile): profile is CreatorProfile => Boolean(profile)),
+    }));
+  }, [influencerGroups, savedInfluencerMap]);
 
   const projectsThisMonth = useMemo(() => {
     const now = new Date();
@@ -717,9 +1010,7 @@ export default function Dashboard({
       : sectionMeta[activeSection].subtitle);
 
   // Check if we're on a dedicated page (campaign routes)
-  const isOnDedicatedPage = isCampaignRoute;
-
-  if (loading || !userData) {
+  if (loading) {
     return (
       <div className="ec-dash-loading">
         <Sparkles className="spin" size={22} />
@@ -825,6 +1116,67 @@ export default function Dashboard({
 
                 <div className="ec-dir-row">
                   <label>
+                    Region (YouTube)
+                    <select
+                      value={directoryRegion}
+                      onChange={(e) => setDirectoryRegion(e.target.value)}
+                    >
+                      <option value="">Any</option>
+                      <option value="US">United States</option>
+                      <option value="GB">United Kingdom</option>
+                      <option value="CA">Canada</option>
+                      <option value="AU">Australia</option>
+                      <option value="IN">India</option>
+                      <option value="DE">Germany</option>
+                      <option value="FR">France</option>
+                      <option value="BR">Brazil</option>
+                      <option value="JP">Japan</option>
+                      <option value="AE">United Arab Emirates</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Country (YouTube)
+                    <select
+                      value={directoryCountry}
+                      onChange={(e) => setDirectoryCountry(e.target.value)}
+                    >
+                      <option value="">Any</option>
+                      <option value="US">United States</option>
+                      <option value="GB">United Kingdom</option>
+                      <option value="CA">Canada</option>
+                      <option value="AU">Australia</option>
+                      <option value="IN">India</option>
+                      <option value="DE">Germany</option>
+                      <option value="FR">France</option>
+                      <option value="BR">Brazil</option>
+                      <option value="JP">Japan</option>
+                      <option value="AE">United Arab Emirates</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label>
+                  Language (YouTube)
+                  <select
+                    value={directoryLanguage}
+                    onChange={(e) => setDirectoryLanguage(e.target.value)}
+                  >
+                    <option value="">Any</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="hi">Hindi</option>
+                    <option value="ta">Tamil</option>
+                    <option value="ar">Arabic</option>
+                    <option value="ja">Japanese</option>
+                  </select>
+                </label>
+
+                <div className="ec-dir-row">
+                  <label>
                     Min followers
                     <input
                       type="number"
@@ -868,6 +1220,9 @@ export default function Dashboard({
                       setDirectoryBioKeywords("");
                       setDirectoryDescription("");
                       setDirectoryProductUrl("");
+                      setDirectoryRegion("");
+                      setDirectoryCountry("");
+                      setDirectoryLanguage("");
                       setDirectoryMinFollowers(0);
                       setDirectoryMaxFollowers(1000000);
                       setDirectorySort("highest");
@@ -918,112 +1273,140 @@ export default function Dashboard({
                       {paginatedResults.map((profile) => {
                         const isSaved = isInfluencerSaved(profile.id);
                         return (
-                          <article key={profile.id} className="ec-dir-card">
+                          <article
+                            key={profile.id}
+                            className="ec-dir-card"
+                            onClick={() => setSelectedInfluencer(profile)}
+                          >
                             <div className="head">
                               <div>
                                 <h4>{profile.displayName}</h4>
                                 <p>{profile.handle}</p>
+                                {profile.email ? (
+                                  <p className="ec-card-email">
+                                    <Mail size={12} />
+                                    {profile.email}
+                                  </p>
+                                ) : profile.profileUrl ? (
+                                  <p className="ec-card-email">
+                                    <Mail size={12} />
+                                    No public email found. Open the channel and
+                                    check About/Contact info.
+                                  </p>
+                                ) : null}
                               </div>
                               {profile.avatarUrl && (
                                 <img
-                                src={profile.avatarUrl}
-                                alt={profile.displayName}
-                              />
-                            )}
-                          </div>
-                          <small className="meta">{profileMeta(profile)}</small>
-                          {profile.bio && <p className="bio">{profile.bio}</p>}
-                          <div className="actions">
-                            <button
-                              className={`save-btn ${isSaved ? "saved" : ""}`}
-                              onClick={() =>
-                                isSaved
-                                  ? void unsaveInfluencer(profile.id)
-                                  : void saveInfluencer(profile)
-                              }
-                              title={
-                                isSaved
-                                  ? "Remove from saved"
-                                  : "Save influencer"
-                              }
-                            >
-                              {isSaved ? (
-                                <BookmarkCheck size={14} />
-                              ) : (
-                                <Bookmark size={14} />
+                                  src={profile.avatarUrl}
+                                  alt={profile.displayName}
+                                />
                               )}
-                              {isSaved ? "Saved" : "Save"}
-                            </button>
-                            {profile.profileUrl && (
-                              <a
-                                href={profile.profileUrl}
-                                target="_blank"
-                                rel="noreferrer"
+                            </div>
+                            <small className="meta">
+                              {profileMeta(profile)}
+                            </small>
+                            <span className="ec-card-hint">
+                              Click to view details
+                            </span>
+                            <div className="actions">
+                              <button
+                                className={`save-btn ${isSaved ? "saved" : ""}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openGroupModal(profile);
+                                }}
+                                title={
+                                  isSaved ? "Add to group" : "Save to group"
+                                }
                               >
-                                Open
-                              </a>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-
-                  {totalPages > 1 && (
-                    <div className="ec-pagination">
-                      <button
-                        className="ec-page-btn"
-                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        <ChevronLeft size={16} />
-                        Previous
-                      </button>
-
-                      <div className="ec-page-numbers">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1)
-                          .filter((page) => {
-                            // Show first page, last page, current page, and pages around current
-                            return (
-                              page === 1 ||
-                              page === totalPages ||
-                              Math.abs(page - currentPage) <= 1
-                            );
-                          })
-                          .map((page, index, array) => {
-                            // Add ellipsis if there's a gap
-                            const prevPage = array[index - 1];
-                            const showEllipsis = prevPage && page - prevPage > 1;
-
-                            return (
-                              <div key={page} style={{ display: "flex", gap: "4px" }}>
-                                {showEllipsis && (
-                                  <span className="ec-page-ellipsis">...</span>
+                                {isSaved ? (
+                                  <BookmarkCheck size={14} />
+                                ) : (
+                                  <Bookmark size={14} />
                                 )}
-                                <button
-                                  className={`ec-page-num ${page === currentPage ? "active" : ""}`}
-                                  onClick={() => setCurrentPage(page)}
+                                {isSaved ? "Saved" : "Save"}
+                              </button>
+                              {profile.profileUrl && (
+                                <a
+                                  href={profile.profileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
                                 >
-                                  {page}
-                                </button>
-                              </div>
-                            );
-                          })}
-                      </div>
-
-                      <button
-                        className="ec-page-btn"
-                        onClick={() =>
-                          setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                        }
-                        disabled={currentPage === totalPages}
-                      >
-                        Next
-                        <ChevronRight size={16} />
-                      </button>
+                                  Open channel
+                                </a>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
-                  )}
-                </>
+
+                    {totalPages > 1 && (
+                      <div className="ec-pagination">
+                        <button
+                          className="ec-page-btn"
+                          onClick={() =>
+                            setCurrentPage((prev) => Math.max(1, prev - 1))
+                          }
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft size={16} />
+                          Previous
+                        </button>
+
+                        <div className="ec-page-numbers">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter((page) => {
+                              // Show first page, last page, current page, and pages around current
+                              return (
+                                page === 1 ||
+                                page === totalPages ||
+                                Math.abs(page - currentPage) <= 1
+                              );
+                            })
+                            .map((page, index, array) => {
+                              // Add ellipsis if there's a gap
+                              const prevPage = array[index - 1];
+                              const showEllipsis =
+                                prevPage && page - prevPage > 1;
+
+                              return (
+                                <div
+                                  key={page}
+                                  style={{ display: "flex", gap: "4px" }}
+                                >
+                                  {showEllipsis && (
+                                    <span className="ec-page-ellipsis">
+                                      ...
+                                    </span>
+                                  )}
+                                  <button
+                                    className={`ec-page-num ${page === currentPage ? "active" : ""}`}
+                                    onClick={() => setCurrentPage(page)}
+                                  >
+                                    {page}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                        </div>
+
+                        <button
+                          className="ec-page-btn"
+                          onClick={() =>
+                            setCurrentPage((prev) =>
+                              Math.min(totalPages, prev + 1),
+                            )
+                          }
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -1038,46 +1421,58 @@ export default function Dashboard({
                       icon: "🎥",
                       color: "#FF0000",
                       gradient: "linear-gradient(135deg, #FF0000, #CC0000)",
-                      description: "Discover video creators and long-form content influencers",
-                      stats: "2B+ users worldwide"
+                      description:
+                        "Discover video creators and long-form content influencers",
+                      stats: "2B+ users worldwide",
                     },
                     Instagram: {
                       icon: "📸",
                       color: "#E4405F",
-                      gradient: "linear-gradient(135deg, #833AB4, #E4405F, #FCAF45)",
-                      description: "Connect with visual storytellers and lifestyle influencers",
-                      stats: "2B+ active users"
+                      gradient:
+                        "linear-gradient(135deg, #833AB4, #E4405F, #FCAF45)",
+                      description:
+                        "Connect with visual storytellers and lifestyle influencers",
+                      stats: "2B+ active users",
                     },
                     Facebook: {
                       icon: "👥",
                       color: "#1877F2",
                       gradient: "linear-gradient(135deg, #1877F2, #0C63D4)",
-                      description: "Reach community builders and diverse audiences",
-                      stats: "3B+ monthly users"
+                      description:
+                        "Reach community builders and diverse audiences",
+                      stats: "3B+ monthly users",
                     },
                     TikTok: {
                       icon: "🎵",
                       color: "#000000",
                       gradient: "linear-gradient(135deg, #00F2EA, #FF0050)",
-                      description: "Engage with short-form video creators and viral trends",
-                      stats: "1B+ active users"
-                    }
+                      description:
+                        "Engage with short-form video creators and viral trends",
+                      stats: "1B+ active users",
+                    },
                   };
-                  
+
                   const info = platformInfo[platform];
-                  
+
                   return (
                     <article key={platform} className="ec-platform-card">
                       <div className="ec-platform-header">
-                        <div className="ec-platform-icon" style={{ background: info.gradient }}>
+                        <div
+                          className="ec-platform-icon"
+                          style={{ background: info.gradient }}
+                        >
                           <span>{info.icon}</span>
                         </div>
                         <div className="ec-platform-title">
                           <h3>{platform}</h3>
-                          <span className="ec-platform-stats">{info.stats}</span>
+                          <span className="ec-platform-stats">
+                            {info.stats}
+                          </span>
                         </div>
                       </div>
-                      <p className="ec-platform-description">{info.description}</p>
+                      <p className="ec-platform-description">
+                        {info.description}
+                      </p>
                       <div className="ec-platform-actions">
                         <button
                           className="ghost"
@@ -1106,7 +1501,7 @@ export default function Dashboard({
                       </div>
                     </article>
                   );
-                }
+                },
               )}
             </section>
           )}
@@ -1230,15 +1625,20 @@ export default function Dashboard({
           <section className="ec-panel ec-list-panel">
             <div className="ec-panel-head">
               <h2>Saved Influencers</h2>
-              <button
-                onClick={() => {
-                  setActiveSection("campaigns");
-                  setCampaignSubdivision("influencers");
-                  navigate("/dashboard/campaigns/influencers");
-                }}
-              >
-                Discover more
-              </button>
+              <div className="ec-panel-actions">
+                <button onClick={() => openGroupModal(null)}>
+                  Create group
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveSection("campaigns");
+                    setCampaignSubdivision("influencers");
+                    navigate("/dashboard/campaigns/influencers");
+                  }}
+                >
+                  Discover more
+                </button>
+              </div>
             </div>
 
             {savedInfluencersLoading ? (
@@ -1275,6 +1675,12 @@ export default function Dashboard({
                     {profile.bio && <p className="bio">{profile.bio}</p>}
                     <div className="actions">
                       <button
+                        className="group-btn"
+                        onClick={() => openGroupModal(profile)}
+                      >
+                        Add to group
+                      </button>
+                      <button
                         className="remove-btn"
                         onClick={() => void unsaveInfluencer(profile.id)}
                       >
@@ -1290,6 +1696,47 @@ export default function Dashboard({
                         </a>
                       )}
                     </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="ec-panel ec-list-panel">
+            <div className="ec-panel-head">
+              <h2>Groups</h2>
+              <button onClick={() => openGroupModal(null)}>New group</button>
+            </div>
+
+            {groupedInfluencers.length === 0 ? (
+              <div className="ec-empty-state">
+                <Users size={26} />
+                <h3>No groups yet</h3>
+                <p>Create a group and start organizing saved influencers.</p>
+              </div>
+            ) : (
+              <div className="ec-groups-grid">
+                {groupedInfluencers.map((group) => (
+                  <article
+                    key={group.id}
+                    className="ec-group-card"
+                    onClick={() => setSelectedGroup(group)}
+                  >
+                    <div className="ec-group-head">
+                      <div>
+                        <h3>{group.name}</h3>
+                        <span>{group.influencers.length} influencers</span>
+                      </div>
+                    </div>
+                    {group.influencers.length === 0 ? (
+                      <p className="ec-group-empty">
+                        No influencers in this group yet.
+                      </p>
+                    ) : (
+                      <p className="ec-group-empty">
+                        Click to view this group.
+                      </p>
+                    )}
                   </article>
                 ))}
               </div>
@@ -1428,137 +1875,132 @@ export default function Dashboard({
   };
 
   return (
-    <div className={`ec-dash ${isOnDedicatedPage ? "ec-dash-dedicated" : ""}`}>
-      {!isOnDedicatedPage && (
-        <aside className="ec-sidebar">
-          <button className="ec-brand" onClick={() => navigate("/dashboard")}>
-            <Sparkles size={18} />
-            <span>CollabFree</span>
-          </button>
+    <div className="ec-dash">
+      <aside className="ec-sidebar">
+        <button className="ec-brand" onClick={goToDashboardOverview}>
+          <Sparkles size={18} />
+          <span>CollabFree</span>
+        </button>
 
-          <nav className="ec-navlist">
-            {navItems.map((item) => {
-              if (item.id !== "campaigns") {
-                return (
-                  <button
-                    key={item.id}
-                    className={`ec-nav-item ${activeSection === item.id ? "active" : ""}`}
-                    onClick={() => {
-                      setActiveSection(item.id);
-                      navigate(`/dashboard?section=${item.id}`);
-                    }}
-                  >
-                    <span className="ec-nav-label">
-                      <item.icon size={16} /> {item.label}
-                    </span>
-                  </button>
-                );
-              }
-
+        <nav className="ec-navlist">
+          {navItems.map((item) => {
+            if (item.id !== "campaigns") {
               return (
-                <div key={item.id} className="ec-nav-group">
-                  <button
-                    className={`ec-nav-item ${activeSection === item.id ? "active" : ""}`}
-                    onClick={() => {
-                      setActiveSection("campaigns");
-                      setCampaignNavOpen((prev) =>
-                        activeSection === "campaigns" ? !prev : true,
-                      );
-                      navigate(`/dashboard/campaigns/${campaignSubdivision}`);
-                    }}
-                  >
-                    <span className="ec-nav-label">
-                      <item.icon size={16} /> {item.label}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={`ec-nav-chevron ${campaignNavOpen ? "open" : ""}`}
-                    />
-                  </button>
-
-                  {campaignNavOpen && (
-                    <div className="ec-subnav">
-                      <button
-                        className={
-                          campaignSubdivision === "influencers" ? "active" : ""
-                        }
-                        onClick={() => {
-                          setActiveSection("campaigns");
-                          setCampaignSubdivision("influencers");
-                          navigate("/dashboard/campaigns/influencers");
-                        }}
-                      >
-                        Show Influencer
-                      </button>
-                      <button
-                        className={
-                          campaignSubdivision === "recent" ? "active" : ""
-                        }
-                        onClick={() => {
-                          setActiveSection("campaigns");
-                          setCampaignSubdivision("recent");
-                          navigate("/dashboard/campaigns/recent");
-                        }}
-                      >
-                        Recent Campaigns
-                      </button>
-                      <button
-                        className={
-                          campaignSubdivision === "platforms" ? "active" : ""
-                        }
-                        onClick={() => {
-                          setActiveSection("campaigns");
-                          setCampaignSubdivision("platforms");
-                          navigate("/dashboard/campaigns/platforms");
-                        }}
-                      >
-                        Platforms
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={item.id}
+                  className={`ec-nav-item ${activeSection === item.id ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveSection(item.id);
+                    navigate(`/dashboard?section=${item.id}`);
+                  }}
+                >
+                  <span className="ec-nav-label">
+                    <item.icon size={16} /> {item.label}
+                  </span>
+                </button>
               );
-            })}
-          </nav>
+            }
 
-          <button
-            className="ec-profile-card"
-            onClick={() => navigate("/profile")}
-          >
-            <div className="ec-profile-avatar">
-              <User size={18} />
-            </div>
-            <div className="ec-profile-info">
-              <strong>{resolvedUserData.displayName}</strong>
-              <span>{isPro ? "Pro" : "Free"} Plan</span>
-            </div>
-          </button>
+            return (
+              <div key={item.id} className="ec-nav-group">
+                <button
+                  className={`ec-nav-item ${activeSection === item.id ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveSection("campaigns");
+                    setCampaignNavOpen((prev) =>
+                      activeSection === "campaigns" ? !prev : true,
+                    );
+                    navigate(`/dashboard/campaigns/${campaignSubdivision}`);
+                  }}
+                >
+                  <span className="ec-nav-label">
+                    <item.icon size={16} /> {item.label}
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`ec-nav-chevron ${campaignNavOpen ? "open" : ""}`}
+                  />
+                </button>
 
-          <div className="ec-usage">
-            <p>Subscription Usage</p>
-            <strong>
-              {userData.credits} / {userData.maxCredits} credits
-            </strong>
-            <div className="bar">
-              <span style={{ width: `${creditsPercent}%` }} />
-            </div>
-            {!isPro && <small>{dailyRemaining} prompts remaining today</small>}
+                {campaignNavOpen && (
+                  <div className="ec-subnav">
+                    <button
+                      className={
+                        campaignSubdivision === "influencers" ? "active" : ""
+                      }
+                      onClick={() => {
+                        setActiveSection("campaigns");
+                        setCampaignSubdivision("influencers");
+                        navigate("/dashboard/campaigns/influencers");
+                      }}
+                    >
+                      Show Influencer
+                    </button>
+                    <button
+                      className={
+                        campaignSubdivision === "recent" ? "active" : ""
+                      }
+                      onClick={() => {
+                        setActiveSection("campaigns");
+                        setCampaignSubdivision("recent");
+                        navigate("/dashboard/campaigns/recent");
+                      }}
+                    >
+                      Recent Campaigns
+                    </button>
+                    <button
+                      className={
+                        campaignSubdivision === "platforms" ? "active" : ""
+                      }
+                      onClick={() => {
+                        setActiveSection("campaigns");
+                        setCampaignSubdivision("platforms");
+                        navigate("/dashboard/campaigns/platforms");
+                      }}
+                    >
+                      Platforms
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        <button
+          className="ec-profile-card"
+          onClick={() => navigate("/profile")}
+        >
+          <div className="ec-profile-avatar">
+            <User size={18} />
           </div>
+          <div className="ec-profile-info">
+            <strong>{resolvedUserData.displayName}</strong>
+            <span>{isPro ? "Pro" : "Free"} Plan</span>
+          </div>
+        </button>
 
-          <button className="ec-logout" onClick={handleLogout}>
-            <LogOut size={15} /> Sign out
-          </button>
-        </aside>
-      )}
+        <div className="ec-usage">
+          <p>Subscription Usage</p>
+          <strong>
+            {resolvedUserData.credits} / {resolvedUserData.maxCredits} credits
+          </strong>
+          <div className="bar">
+            <span style={{ width: `${creditsPercent}%` }} />
+          </div>
+          {!isPro && <small>{dailyRemaining} prompts remaining today</small>}
+        </div>
+
+        <button className="ec-logout" onClick={handleLogout}>
+          <LogOut size={15} /> Sign out
+        </button>
+      </aside>
 
       <div className="ec-main">
         <header className="ec-topbar">
           <div className="ec-topbar-title-section">
-            {isOnDedicatedPage && (
-              <button
-                className="ec-back-btn"
-                onClick={() => navigate("/dashboard")}
-              >
+            {isCampaignRoute && (
+              <button className="ec-back-btn" onClick={goToDashboardOverview}>
                 <ArrowLeft size={18} />
               </button>
             )}
@@ -1590,6 +2032,265 @@ export default function Dashboard({
 
         {renderSection()}
       </div>
+
+      {selectedInfluencer && (
+        <div
+          className="ec-influencer-modal-overlay"
+          onClick={() => setSelectedInfluencer(null)}
+        >
+          <div
+            className="ec-influencer-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <div className="modal-title">
+                {selectedInfluencer.avatarUrl && (
+                  <img
+                    src={selectedInfluencer.avatarUrl}
+                    alt={selectedInfluencer.displayName}
+                  />
+                )}
+                <div>
+                  <h3>{selectedInfluencer.displayName}</h3>
+                  <p>{selectedInfluencer.handle}</p>
+                  {selectedInfluencer.email ? (
+                    <p className="modal-email">{selectedInfluencer.email}</p>
+                  ) : selectedInfluencer.profileUrl ? (
+                    <p className="modal-email">
+                      No public email found. Open the channel and check
+                      About/Contact info.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setSelectedInfluencer(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="modal-meta">{profileMeta(selectedInfluencer)}</div>
+
+            <div className="modal-details">
+              <div>
+                <strong>Platform</strong>
+                <span>{selectedInfluencer.platform}</span>
+              </div>
+              {selectedInfluencer.email ? (
+                <div>
+                  <strong>Email</strong>
+                  <span>{selectedInfluencer.email}</span>
+                </div>
+              ) : selectedInfluencer.profileUrl ? (
+                <div>
+                  <strong>Email</strong>
+                  <span>
+                    No public email found. Open the channel and check
+                    About/Contact info.
+                  </span>
+                </div>
+              ) : null}
+              {selectedInfluencer.followers !== undefined && (
+                <div>
+                  <strong>Followers</strong>
+                  <span>
+                    {selectedInfluencer.followers.toLocaleString("en-US")}
+                  </span>
+                </div>
+              )}
+              {selectedInfluencer.views !== undefined && (
+                <div>
+                  <strong>Views</strong>
+                  <span>
+                    {selectedInfluencer.views.toLocaleString("en-US")}
+                  </span>
+                </div>
+              )}
+              {selectedInfluencer.engagementRate !== undefined && (
+                <div>
+                  <strong>Engagement</strong>
+                  <span>{selectedInfluencer.engagementRate}%</span>
+                </div>
+              )}
+              {selectedInfluencer.profileUrl && (
+                <div>
+                  <strong>Profile</strong>
+                  <span>{selectedInfluencer.profileUrl}</span>
+                </div>
+              )}
+            </div>
+
+            {selectedInfluencer.bio && (
+              <div className="modal-bio">
+                <strong>About</strong>
+                <p>{selectedInfluencer.bio}</p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className={`save-btn ${
+                  isInfluencerSaved(selectedInfluencer.id) ? "saved" : ""
+                }`}
+                onClick={() => openGroupModal(selectedInfluencer)}
+              >
+                {isInfluencerSaved(selectedInfluencer.id) ? "Saved" : "Save"}
+              </button>
+              {selectedInfluencer.profileUrl && (
+                <a
+                  className="modal-open"
+                  href={selectedInfluencer.profileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open channel
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {groupModalOpen && (
+        <div className="ec-group-modal-overlay" onClick={closeGroupModal}>
+          <div
+            className="ec-group-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <div>
+                <h3>
+                  {groupModalProfile
+                    ? "Save influencer to group"
+                    : "Create a new group"}
+                </h3>
+                {groupModalProfile && (
+                  <p>
+                    {groupModalProfile.displayName} {groupModalProfile.handle}
+                  </p>
+                )}
+              </div>
+              <button className="modal-close" onClick={closeGroupModal}>
+                Close
+              </button>
+            </div>
+
+            {influencerGroups.length > 0 ? (
+              <div className="ec-group-list">
+                {influencerGroups.map((group) => (
+                  <div key={group.id} className="ec-group-row">
+                    <div>
+                      <strong>{group.name}</strong>
+                      <span>{group.influencerIds.length} influencers</span>
+                    </div>
+                    {groupModalProfile ? (
+                      <button
+                        onClick={() => void saveInfluencerToGroup(group.id)}
+                      >
+                        Save here
+                      </button>
+                    ) : (
+                      <span className="ec-group-hint">
+                        Select an influencer
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ec-empty-state">
+                <Users size={26} />
+                <h3>No groups yet</h3>
+                <p>Create a group to organize saved influencers.</p>
+              </div>
+            )}
+
+            <div className="ec-group-create">
+              <label>
+                Group name
+                <input
+                  value={groupNameInput}
+                  onChange={(e) => setGroupNameInput(e.target.value)}
+                  placeholder="e.g. Food creators"
+                />
+              </label>
+              <button onClick={() => void createGroup()}>
+                {groupModalProfile ? "Create & Save" : "Create group"}
+              </button>
+            </div>
+
+            {groupError && <div className="ec-inline-error">{groupError}</div>}
+          </div>
+        </div>
+      )}
+
+      {selectedGroup && (
+        <div className="ec-group-modal-overlay" onClick={closeGroupDetails}>
+          <div
+            className="ec-group-details"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <div>
+                <h3>{selectedGroup.name}</h3>
+                <p>{selectedGroup.influencerIds.length} influencers</p>
+              </div>
+              <button
+                className="modal-close modal-close-absolute"
+                onClick={closeGroupDetails}
+              >
+                Close
+              </button>
+            </div>
+
+            {selectedGroup.influencerIds.length === 0 ? (
+              <div className="ec-empty-state">
+                <Users size={26} />
+                <h3>No influencers in this group</h3>
+                <p>Add influencers from the Saved list.</p>
+              </div>
+            ) : (
+              <div className="ec-group-detail-list">
+                {selectedGroup.influencerIds.map((profileId) => {
+                  const profile = savedInfluencerMap.get(profileId);
+                  if (!profile) return null;
+                  return (
+                    <div key={profile.id} className="ec-group-detail-row">
+                      <div>
+                        <strong>{profile.displayName}</strong>
+                        <span>{profile.handle}</span>
+                      </div>
+                      <div className="ec-group-detail-actions">
+                        <button
+                          onClick={() =>
+                            removeInfluencerFromGroup(
+                              selectedGroup.id,
+                              profile.id,
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                        {profile.profileUrl && (
+                          <a
+                            href={profile.profileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <style>{`
         .ec-dash {
@@ -1629,6 +2330,424 @@ export default function Dashboard({
         }
 
         .ec-brand svg { color: #ef6d25; }
+
+        .ec-influencer-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(20, 16, 12, 0.5);
+          backdrop-filter: blur(3px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 24px;
+        }
+
+        .ec-influencer-modal {
+          width: min(680px, 92vw);
+          background: #fff;
+          border-radius: 20px;
+          box-shadow: 0 30px 80px rgba(35, 24, 16, 0.35);
+          padding: 24px;
+          display: grid;
+          gap: 16px;
+          max-height: 85vh;
+          overflow: auto;
+          border: 1px solid #f2ddc8;
+        }
+
+        .ec-influencer-modal .modal-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .ec-influencer-modal .modal-title {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .ec-influencer-modal .modal-title img {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          object-fit: cover;
+        }
+
+        .ec-influencer-modal .modal-title h3 {
+          margin: 0;
+          font-size: 20px;
+          font-weight: 800;
+          color: #1f1712;
+        }
+
+        .ec-influencer-modal .modal-title p {
+          margin: 4px 0 0;
+          font-weight: 600;
+          color: #7b6656;
+        }
+
+        .ec-influencer-modal .modal-title .modal-email {
+          margin: 6px 0 0;
+          font-weight: 700;
+          color: #2f7a48;
+          font-size: 13px;
+        }
+
+        .ec-influencer-modal .modal-close {
+          border: 1px solid #f2d9c0;
+          background: #fff7ef;
+          color: #8a5a35;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .ec-influencer-modal .modal-meta {
+          font-weight: 700;
+          color: #6f5b4c;
+        }
+
+        .ec-influencer-modal .modal-details {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px;
+          background: #fffaf4;
+          border: 1px solid #f2ddc8;
+          border-radius: 16px;
+          padding: 16px;
+        }
+
+        .ec-influencer-modal .modal-details div {
+          display: grid;
+          gap: 4px;
+        }
+
+        .ec-influencer-modal .modal-details strong {
+          font-size: 12px;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          color: #9c7a5f;
+        }
+
+        .ec-influencer-modal .modal-details span {
+          font-weight: 700;
+          color: #2b221c;
+          word-break: break-word;
+        }
+
+        .ec-influencer-modal .modal-bio {
+          border: 1px dashed #f2ddc8;
+          border-radius: 14px;
+          padding: 12px 14px;
+          background: #fffdf9;
+        }
+
+        .ec-influencer-modal .modal-bio strong {
+          display: block;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          color: #9c7a5f;
+          margin-bottom: 6px;
+        }
+
+        .ec-influencer-modal .modal-bio p {
+          margin: 0;
+          color: #4b3a2f;
+          line-height: 1.5;
+        }
+
+        .ec-influencer-modal .modal-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          justify-content: flex-end;
+        }
+
+        .ec-influencer-modal .modal-open {
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          color: #ef6d25;
+          border-radius: 999px;
+          padding: 8px 16px;
+          font-weight: 700;
+          text-decoration: none;
+        }
+
+        .ec-group-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(20, 16, 12, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+          padding: 24px;
+        }
+
+        .ec-group-modal {
+          width: min(520px, 92vw);
+          background: #fff;
+          border-radius: 18px;
+          padding: 20px;
+          display: grid;
+          gap: 16px;
+          box-shadow: 0 24px 70px rgba(35, 24, 16, 0.3);
+          border: 1px solid #f2ddc8;
+        }
+
+        .ec-group-modal h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 800;
+          color: #1f1712;
+        }
+
+        .ec-group-modal p {
+          margin: 6px 0 0;
+          color: #7b6656;
+          font-weight: 600;
+        }
+
+        .ec-group-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .ec-group-row {
+          border: 1px solid #f2ddc8;
+          border-radius: 12px;
+          padding: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          background: #fffaf4;
+        }
+
+        .ec-group-row strong {
+          display: block;
+          font-size: 14px;
+          color: #2b221c;
+        }
+
+        .ec-group-row span {
+          font-size: 12px;
+          color: #7b6656;
+          font-weight: 700;
+        }
+
+        .ec-group-row button {
+          border: 0;
+          background: linear-gradient(135deg, #f47d21, #dc4f24);
+          color: #fff;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .ec-group-row .ec-group-hint {
+          font-size: 12px;
+          font-weight: 700;
+          color: #9c7a5f;
+        }
+
+        .ec-group-create {
+          display: flex;
+          align-items: flex-end;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .ec-group-create label {
+          display: grid;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #7b6656;
+          flex: 1 1 220px;
+        }
+
+        .ec-group-create input {
+          border: 1px solid #efddca;
+          border-radius: 10px;
+          padding: 10px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+
+        .ec-group-create button {
+          border: 0;
+          border-radius: 10px;
+          padding: 10px 16px;
+          background: #1f1712;
+          color: #fff;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .ec-panel-actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        .ec-panel-actions button {
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-weight: 800;
+          cursor: pointer;
+          color: #7b5c40;
+        }
+
+        .ec-saved-card .actions .group-btn {
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-weight: 800;
+          color: #7b5c40;
+          cursor: pointer;
+        }
+
+        .ec-groups-grid {
+          display: grid;
+          gap: 16px;
+        }
+
+        .ec-group-card {
+          border: 1px solid #efddca;
+          border-radius: 16px;
+          padding: 16px;
+          background: #fffefb;
+          display: grid;
+          gap: 12px;
+          cursor: pointer;
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .ec-group-card:hover {
+          transform: translateY(-2px);
+          border-color: #f2d3b6;
+          box-shadow: 0 12px 28px rgba(197, 149, 106, 0.16);
+        }
+
+        .ec-group-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .ec-group-head h3 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 900;
+          color: #2b221c;
+        }
+
+        .ec-group-head span {
+          font-size: 12px;
+          font-weight: 700;
+          color: #7b6656;
+        }
+
+        .ec-group-empty {
+          margin: 0;
+          color: #7b6656;
+          font-weight: 600;
+        }
+
+        .ec-group-influencers {
+          display: grid;
+          gap: 10px;
+        }
+
+        .ec-group-influencers .ec-group-row {
+          background: #fff;
+        }
+
+        .ec-group-influencers .ec-group-row a {
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-weight: 800;
+          color: #dc5b21;
+          text-decoration: none;
+          font-size: 12px;
+        }
+
+        .ec-group-details {
+          width: min(600px, 92vw);
+          background: #fff;
+          border-radius: 18px;
+          padding: 20px;
+          display: grid;
+          gap: 16px;
+          box-shadow: 0 24px 70px rgba(35, 24, 16, 0.3);
+          border: 1px solid #f2ddc8;
+          max-height: 80vh;
+          overflow: auto;
+          position: relative;
+        }
+
+        .ec-group-details .modal-close-absolute {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+        }
+
+        .ec-group-detail-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .ec-group-detail-row {
+          border: 1px solid #f2ddc8;
+          border-radius: 12px;
+          padding: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          background: #fffaf4;
+        }
+
+        .ec-group-detail-row strong {
+          display: block;
+          font-size: 14px;
+          color: #2b221c;
+        }
+
+        .ec-group-detail-row span {
+          font-size: 12px;
+          color: #7b6656;
+          font-weight: 700;
+        }
+
+        .ec-group-detail-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .ec-group-detail-actions button,
+        .ec-group-detail-actions a {
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-weight: 800;
+          color: #dc5b21;
+          text-decoration: none;
+          font-size: 12px;
+          cursor: pointer;
+        }
 
         .ec-navlist {
           display: grid;
@@ -2182,6 +3301,19 @@ export default function Dashboard({
           background: #fffefb;
           display: grid;
           gap: 8px;
+          cursor: pointer;
+          position: relative;
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .ec-dir-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(197, 149, 106, 0.18);
+          border-color: #f2d3b6;
+        }
+
+        .ec-dir-card:active {
+          transform: translateY(0);
         }
 
         .ec-dir-card .head {
@@ -2218,6 +3350,20 @@ export default function Dashboard({
           color: #6f594a;
           font-weight: 700;
           font-size: 12px;
+        }
+
+        .ec-card-hint {
+          font-size: 11px;
+          font-weight: 800;
+          color: #d4692c;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+
+        .ec-dir-card:hover .ec-card-hint {
+          opacity: 1;
         }
 
         .ec-dir-card .bio {
