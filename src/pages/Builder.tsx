@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   ExternalLink,
   Check,
   ChevronLeft,
   ChevronRight,
   Loader2,
   Mail,
+  MailX,
   MessageSquare,
   Search,
   Send,
@@ -23,6 +25,7 @@ import {
   CreatorProfile,
   profileMeta,
   autoRecommendCreators,
+  fetchCreatorProfiles,
 } from "../services/creatorDataService";
 import {
   CampaignEmailLog,
@@ -48,7 +51,7 @@ interface UserCredits {
 interface BuilderDraft {
   productDescription: string;
   productUrl: string;
-  platform: "YouTube" | "TikTok" | "Instagram";
+  platform: "YouTube" | "TikTok" | "Instagram" | "Twitter";
   language: string;
   discoverCount: number;
   regions: string[];
@@ -82,7 +85,6 @@ const stepLabels: Array<{ id: StepId; label: string }> = [
 ];
 
 export default function Builder() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 
@@ -94,7 +96,7 @@ export default function Builder() {
 
   const [productDescription, setProductDescription] = useState("");
   const [productUrl, setProductUrl] = useState("");
-  const [platform, setPlatform] = useState<"YouTube" | "TikTok" | "Instagram">(
+  const [platform, setPlatform] = useState<"YouTube" | "TikTok" | "Instagram" | "Twitter">(
     "YouTube",
   );
   const [language, setLanguage] = useState("English");
@@ -133,6 +135,8 @@ export default function Builder() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAnalysisProfile, setSelectedAnalysisProfile] =
+    useState<CreatorProfile | null>(null);
   const [savedInfluencers, setSavedInfluencers] = useState<CreatorProfile[]>(
     [],
   );
@@ -162,9 +166,7 @@ export default function Builder() {
       // Ignore malformed shared inbox templates.
     }
   }, []);
-  const [groupSelectMode, setGroupSelectMode] = useState<"single" | "multi">(
-    "single",
-  );
+
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [groupSelectedHandles, setGroupSelectedHandles] = useState<string[]>(
     [],
@@ -443,15 +445,27 @@ export default function Builder() {
     setCreatorResults([]);
 
     try {
-      const results = await autoRecommendCreators(
-        platform,
-        productDescription,
-        hashtags,
-        {
-          language,
-          regions,
-        },
-      );
+      const zernioKey = import.meta.env.VITE_ZERNIO_API_KEY;
+      let results: CreatorProfile[] = [];
+
+      if (zernioKey) {
+        // Query Zernio directly in the builder when Zernio key is active
+        results = await fetchCreatorProfiles(
+          platform,
+          hashtags || productDescription || "",
+        );
+      } else {
+        results = await autoRecommendCreators(
+          platform,
+          productDescription,
+          hashtags,
+          {
+            language,
+            regions,
+          },
+        );
+      }
+
       if (results.length === 0) {
         setCreatorError(
           "No recommendations found. Try adding more specific hashtags or product description.",
@@ -576,22 +590,12 @@ export default function Builder() {
   };
 
   const toggleGroupSelection = (groupId: string) => {
-    if (groupSelectMode === "single") {
-      setSelectedGroupIds((prev) => (prev[0] === groupId ? [] : [groupId]));
-      return;
-    }
     setSelectedGroupIds((prev) =>
       prev.includes(groupId)
         ? prev.filter((id) => id !== groupId)
         : [...prev, groupId],
     );
   };
-
-  useEffect(() => {
-    if (groupSelectMode !== "single") return;
-    if (selectedGroupIds.length <= 1) return;
-    setSelectedGroupIds([selectedGroupIds[0]]);
-  }, [groupSelectMode, selectedGroupIds]);
 
   useEffect(() => {
     const current = influencerInput
@@ -963,7 +967,7 @@ export default function Builder() {
               <label>
                 Platform
                 <div className="ec-pill-row">
-                  {(["YouTube", "TikTok", "Instagram"] as const).map((item) => (
+                  {(["YouTube", "TikTok", "Instagram", "Twitter"] as const).map((item) => (
                     <button
                       key={item}
                       className={platform === item ? "selected" : ""}
@@ -1166,61 +1170,6 @@ export default function Builder() {
                 {platform} creators to shortlist.
               </p>
 
-              <div className="ec-group-selector">
-                <div className="ec-group-selector-head">
-                  <span>Use saved groups to shortlist</span>
-                  <div className="ec-group-controls">
-                    <button
-                      type="button"
-                      className="ec-group-clear"
-                      onClick={() => setSelectedGroupIds([])}
-                      disabled={selectedGroupIds.length === 0}
-                    >
-                      Clear
-                    </button>
-                    <div className="ec-group-mode">
-                      <button
-                        type="button"
-                        className={groupSelectMode === "single" ? "active" : ""}
-                        onClick={() => setGroupSelectMode("single")}
-                      >
-                        Single
-                      </button>
-                      <button
-                        type="button"
-                        className={groupSelectMode === "multi" ? "active" : ""}
-                        onClick={() => setGroupSelectMode("multi")}
-                      >
-                        Multi
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {groupedInfluencers.length === 0 ? (
-                  <p className="ec-group-selector-empty">
-                    No groups yet. Create a group in Saved Lists.
-                  </p>
-                ) : (
-                  <div className="ec-group-chips">
-                    {groupedInfluencers.map((group) => (
-                      <button
-                        key={group.id}
-                        type="button"
-                        className={
-                          selectedGroupIds.includes(group.id) ? "active" : ""
-                        }
-                        onClick={() => toggleGroupSelection(group.id)}
-                        disabled={group.influencers.length === 0}
-                      >
-                        {group.name}
-                        <span>{group.influencers.length}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Search Bar */}
               <div className="ec-search-bar">
                 <Search size={16} />
@@ -1325,17 +1274,16 @@ export default function Builder() {
                               <h3>{profile.displayName}</h3>
                               <p>{profile.handle}</p>
                               {profile.email ? (
-                                <p className="ec-card-email">
+                                <p className="ec-card-email ec-email-found">
                                   <Mail size={12} />
                                   {profile.email}
                                 </p>
-                              ) : profile.profileUrl ? (
-                                <p className="ec-card-email">
-                                  <Mail size={12} />
-                                  No public email found. Open the channel and
-                                  check About/Contact info.
+                              ) : (
+                                <p className="ec-card-email ec-email-missing">
+                                  <MailX size={12} />
+                                  No public email found
                                 </p>
-                              ) : null}
+                              )}
                             </div>
                             {profile.avatarUrl && (
                               <img
@@ -1360,6 +1308,14 @@ export default function Builder() {
                               ) : (
                                 "Add to shortlist"
                               )}
+                            </button>
+                            <button
+                              type="button"
+                              className="ec-analysis-btn"
+                              onClick={() => setSelectedAnalysisProfile(profile)}
+                            >
+                              <BarChart3 size={13} />
+                              Analysis
                             </button>
                             {profile.profileUrl && (
                               <a
@@ -1442,6 +1398,36 @@ export default function Builder() {
                   )}
                 </>
               )}
+
+              {/* Saved Groups - repositioned above Selected Influencers */}
+              <div className="ec-group-selector" style={{ marginTop: '24px' }}>
+                <div className="ec-group-selector-head">
+                  <span>Use saved groups to shortlist</span>
+                </div>
+
+                {groupedInfluencers.length === 0 ? (
+                  <p className="ec-group-selector-empty">
+                    No groups yet. Create a group in Saved Lists.
+                  </p>
+                ) : (
+                  <div className="ec-group-chips">
+                    {groupedInfluencers.map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        className={
+                          selectedGroupIds.includes(group.id) ? "active" : ""
+                        }
+                        onClick={() => toggleGroupSelection(group.id)}
+                        disabled={group.influencers.length === 0}
+                      >
+                        {group.name}
+                        <span>{group.influencers.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div
                 style={{
@@ -2055,6 +2041,96 @@ export default function Builder() {
         </div>
       )}
 
+      {selectedAnalysisProfile && (
+        <div
+          className="ec-modal-overlay"
+          onClick={() => setSelectedAnalysisProfile(null)}
+        >
+          <div
+            className="ec-modal ec-analysis-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="ec-analysis-header">
+              <div className="ec-analysis-title-row">
+                {selectedAnalysisProfile.avatarUrl && (
+                  <img
+                    src={selectedAnalysisProfile.avatarUrl}
+                    alt={selectedAnalysisProfile.displayName}
+                    className="ec-analysis-avatar"
+                  />
+                )}
+                <div>
+                  <h3>{selectedAnalysisProfile.displayName}</h3>
+                  <p>{selectedAnalysisProfile.handle}</p>
+                  <span className="ec-analysis-platform">{selectedAnalysisProfile.platform}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ec-analysis-close"
+                onClick={() => setSelectedAnalysisProfile(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="ec-analysis-metrics">
+              {selectedAnalysisProfile.followers !== undefined && (
+                <div className="ec-analysis-metric">
+                  <span className="metric-label">Followers</span>
+                  <strong>{selectedAnalysisProfile.followers.toLocaleString("en-US")}</strong>
+                </div>
+              )}
+              {selectedAnalysisProfile.views !== undefined && (
+                <div className="ec-analysis-metric">
+                  <span className="metric-label">Views</span>
+                  <strong>{selectedAnalysisProfile.views.toLocaleString("en-US")}</strong>
+                </div>
+              )}
+              {selectedAnalysisProfile.engagementRate !== undefined && (
+                <div className="ec-analysis-metric">
+                  <span className="metric-label">Engagement</span>
+                  <strong>{selectedAnalysisProfile.engagementRate}%</strong>
+                </div>
+              )}
+              <div className="ec-analysis-metric">
+                <span className="metric-label">Email</span>
+                {selectedAnalysisProfile.email ? (
+                  <strong className="ec-email-found-text">
+                    <Mail size={14} /> {selectedAnalysisProfile.email}
+                  </strong>
+                ) : (
+                  <strong className="ec-email-missing-text">
+                    <MailX size={14} /> No public email
+                  </strong>
+                )}
+              </div>
+            </div>
+
+            {selectedAnalysisProfile.bio && (
+              <div className="ec-analysis-bio">
+                <span className="metric-label">About</span>
+                <p>{selectedAnalysisProfile.bio}</p>
+              </div>
+            )}
+
+            <div className="ec-analysis-actions">
+              {selectedAnalysisProfile.profileUrl && (
+                <a
+                  href={selectedAnalysisProfile.profileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ec-analysis-open"
+                >
+                  <ExternalLink size={14} />
+                  Open Profile
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .ec-builder-page {
           min-height: 100vh;
@@ -2365,10 +2441,25 @@ export default function Builder() {
           display: flex;
           align-items: center;
           gap: 4px;
-          color: #1f7a40 !important;
           font-size: 12px !important;
           font-weight: 600 !important;
           margin-top: 4px;
+        }
+
+        .ec-email-found {
+          color: #1f7a40 !important;
+        }
+
+        .ec-email-found svg {
+          color: #22883e;
+        }
+
+        .ec-email-missing {
+          color: #9a7e6c !important;
+        }
+
+        .ec-email-missing svg {
+          color: #c45a3a;
         }
 
         .ec-results-grid img {
@@ -3262,6 +3353,198 @@ export default function Builder() {
           .ec-modal-grid {
             grid-template-columns: 1fr;
           }
+        }
+
+        .ec-analysis-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid #e2d5c7;
+          background: linear-gradient(135deg, #fff8f2, #fff);
+          color: #6d5340;
+          transition: all 0.2s;
+        }
+
+        .ec-analysis-btn:hover {
+          background: linear-gradient(135deg, #fef0e4, #fff8f2);
+          border-color: #d9c4b0;
+          color: #4d3828;
+        }
+
+        .ec-analysis-modal {
+          width: min(640px, 92vw);
+          max-height: 85vh;
+          overflow: auto;
+        }
+
+        .ec-analysis-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+        }
+
+        .ec-analysis-title-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .ec-analysis-avatar {
+          width: 52px;
+          height: 52px;
+          border-radius: 14px;
+          object-fit: cover;
+          border: 2px solid #f2ddc8;
+        }
+
+        .ec-analysis-title-row h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 800;
+          color: #1f1712;
+        }
+
+        .ec-analysis-title-row p {
+          margin: 2px 0 0;
+          font-weight: 600;
+          color: #7b6556;
+          font-size: 14px;
+        }
+
+        .ec-analysis-platform {
+          display: inline-block;
+          background: #fff3e8;
+          color: #c85a20;
+          font-size: 11px;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 6px;
+          margin-top: 4px;
+        }
+
+        .ec-analysis-close {
+          border: 1px solid #f2d9c0;
+          background: #fff7ef;
+          color: #8a5a35;
+          border-radius: 999px;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .ec-analysis-metrics {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 12px;
+          background: #fffaf4;
+          border: 1px solid #f2ddc8;
+          border-radius: 14px;
+          padding: 16px;
+          margin-top: 16px;
+        }
+
+        .ec-analysis-metric {
+          display: grid;
+          gap: 4px;
+        }
+
+        .ec-analysis-metric .metric-label {
+          font-size: 11px;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: #9c7a5f;
+          font-weight: 700;
+        }
+
+        .ec-analysis-metric strong {
+          font-size: 16px;
+          font-weight: 800;
+          color: #2b221c;
+        }
+
+        .ec-email-found-text {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #1f7a40 !important;
+          font-size: 13px !important;
+        }
+
+        .ec-email-found-text svg {
+          color: #22883e;
+        }
+
+        .ec-email-missing-text {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #9a7e6c !important;
+          font-size: 13px !important;
+        }
+
+        .ec-email-missing-text svg {
+          color: #c45a3a;
+        }
+
+        .ec-analysis-bio {
+          border: 1px dashed #f2ddc8;
+          border-radius: 12px;
+          padding: 12px 14px;
+          background: #fffdf9;
+          margin-top: 12px;
+        }
+
+        .ec-analysis-bio .metric-label {
+          display: block;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          color: #9c7a5f;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .ec-analysis-bio p {
+          margin: 0;
+          color: #4b3a2f;
+          line-height: 1.55;
+          font-size: 13px;
+          max-height: 120px;
+          overflow: auto;
+        }
+
+        .ec-analysis-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .ec-analysis-open {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 1px solid #f2d9c0;
+          background: #fff;
+          color: #ef6d25;
+          border-radius: 999px;
+          padding: 8px 16px;
+          font-weight: 700;
+          text-decoration: none;
+          font-size: 13px;
+        }
+
+        .ec-analysis-open:hover {
+          background: #fff7ef;
         }
       `}</style>
     </div>

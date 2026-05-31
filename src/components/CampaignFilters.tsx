@@ -6,7 +6,7 @@ interface CampaignFiltersProps {
 }
 
 export interface CampaignFilterState {
-  platform?: "YouTube" | "TikTok" | "Instagram" | "Facebook" | "All";
+  platform?: "YouTube" | "TikTok" | "Instagram" | "Facebook" | "Twitter" | "All";
   minFollowers?: number;
   maxFollowers?: number;
   keywords?: string;
@@ -71,6 +71,7 @@ export default function CampaignFilters({
                 <option value="YouTube">YouTube</option>
                 <option value="TikTok">TikTok</option>
                 <option value="Instagram">Instagram</option>
+                <option value="Twitter">Twitter</option>
                 <option value="Facebook">Facebook</option>
               </select>
             </label>

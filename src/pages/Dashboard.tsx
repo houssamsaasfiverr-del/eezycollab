@@ -10,9 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Crown,
+  ExternalLink,
   Loader2,
   LogOut,
   Mail,
+  MailX,
   MessageSquare,
   Plus,
   Sparkles,
@@ -757,10 +759,12 @@ export default function Dashboard({
     let rows = [...directoryResults];
 
     if (keyword) {
+      const cleanKeyword = keyword.replace(/^@/, '');
       rows = rows.filter((profile) => {
+        const cleanHandle = String(profile.handle || '').toLowerCase().replace(/^@/, '');
         const haystack =
-          `${profile.displayName} ${profile.handle}`.toLowerCase();
-        return haystack.includes(keyword);
+          `${profile.displayName} ${cleanHandle}`.toLowerCase();
+        return haystack.includes(cleanKeyword);
       });
     }
 
@@ -857,8 +861,16 @@ export default function Dashboard({
       };
 
       let results: CreatorProfile[] = [];
+      const zernioKey = import.meta.env.VITE_ZERNIO_API_KEY;
 
-      if (shouldYoutubeKeywordSearch) {
+      if (zernioKey) {
+        // If Zernio API key is active, fetch from Zernio directly across all platforms!
+        results = await fetchCreatorProfiles(
+          directoryPlatform,
+          keyword || bioKeyword || directoryDescription || "",
+          directoryPlatform === "YouTube" ? youtubeOptions : undefined,
+        );
+      } else if (shouldYoutubeKeywordSearch) {
         results = await fetchCreatorProfiles(
           "YouTube",
           combinedQuery,
@@ -872,7 +884,8 @@ export default function Dashboard({
         );
       }
 
-      if (results.length === 0) {
+      // Only fall back to Gemini AI recommendations if Zernio is NOT configured
+      if (results.length === 0 && !zernioKey) {
         const aiDescription = description || keyword || "Influencer campaign";
         const aiHashtags = keyword || directoryBioKeywords || "";
         results = await autoRecommendCreators(
@@ -1074,6 +1087,7 @@ export default function Dashboard({
                     <option value="YouTube">YouTube</option>
                     <option value="TikTok">TikTok</option>
                     <option value="Instagram">Instagram</option>
+                    <option value="Twitter">Twitter</option>
                     <option value="Facebook">Facebook</option>
                   </select>
                 </label>
@@ -1116,27 +1130,23 @@ export default function Dashboard({
 
                 <div className="ec-dir-row">
                   <label>
-                    Region (YouTube)
+                    Region ({directoryPlatform})
                     <select
                       value={directoryRegion}
                       onChange={(e) => setDirectoryRegion(e.target.value)}
                     >
                       <option value="">Any</option>
-                      <option value="US">United States</option>
-                      <option value="GB">United Kingdom</option>
-                      <option value="CA">Canada</option>
-                      <option value="AU">Australia</option>
-                      <option value="IN">India</option>
-                      <option value="DE">Germany</option>
-                      <option value="FR">France</option>
-                      <option value="BR">Brazil</option>
-                      <option value="JP">Japan</option>
-                      <option value="AE">United Arab Emirates</option>
+                      <option value="asia">Asia</option>
+                      <option value="europe">Europe</option>
+                      <option value="africa">Africa</option>
+                      <option value="north-america">North America</option>
+                      <option value="south-america">South America</option>
+                      <option value="oceania">Oceania</option>
                     </select>
                   </label>
 
                   <label>
-                    Country (YouTube)
+                    Country ({directoryPlatform})
                     <select
                       value={directoryCountry}
                       onChange={(e) => setDirectoryCountry(e.target.value)}
@@ -1157,7 +1167,7 @@ export default function Dashboard({
                 </div>
 
                 <label>
-                  Language (YouTube)
+                  Language ({directoryPlatform})
                   <select
                     value={directoryLanguage}
                     onChange={(e) => setDirectoryLanguage(e.target.value)}
@@ -1283,17 +1293,16 @@ export default function Dashboard({
                                 <h4>{profile.displayName}</h4>
                                 <p>{profile.handle}</p>
                                 {profile.email ? (
-                                  <p className="ec-card-email">
+                                  <p className="ec-card-email ec-email-found">
                                     <Mail size={12} />
                                     {profile.email}
                                   </p>
-                                ) : profile.profileUrl ? (
-                                  <p className="ec-card-email">
-                                    <Mail size={12} />
-                                    No public email found. Open the channel and
-                                    check About/Contact info.
+                                ) : (
+                                  <p className="ec-card-email ec-email-missing">
+                                    <MailX size={12} />
+                                    No public email found
                                   </p>
-                                ) : null}
+                                )}
                               </div>
                               {profile.avatarUrl && (
                                 <img
@@ -1308,7 +1317,7 @@ export default function Dashboard({
                             <span className="ec-card-hint">
                               Click to view details
                             </span>
-                            <div className="actions">
+                              <div className="actions">
                               <button
                                 className={`save-btn ${isSaved ? "saved" : ""}`}
                                 onClick={(event) => {
@@ -1326,6 +1335,16 @@ export default function Dashboard({
                                 )}
                                 {isSaved ? "Saved" : "Save"}
                               </button>
+                              <button
+                                className="ec-analysis-btn"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedInfluencer(profile);
+                                }}
+                              >
+                                <BarChart3 size={14} />
+                                Analysis
+                              </button>
                               {profile.profileUrl && (
                                 <a
                                   href={profile.profileUrl}
@@ -1334,6 +1353,7 @@ export default function Dashboard({
                                   onClick={(event) => event.stopPropagation()}
                                 >
                                   Open channel
+                                  <ExternalLink size={13} />
                                 </a>
                               )}
                             </div>
@@ -2145,8 +2165,9 @@ export default function Dashboard({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open channel
-                </a>
+                   Open channel
+                   <ExternalLink size={13} style={{ marginLeft: '4px' }} />
+                 </a>
               )}
             </div>
           </div>
@@ -2258,9 +2279,40 @@ export default function Dashboard({
                   if (!profile) return null;
                   return (
                     <div key={profile.id} className="ec-group-detail-row">
-                      <div>
-                        <strong>{profile.displayName}</strong>
-                        <span>{profile.handle}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {profile.avatarUrl ? (
+                          <img
+                            src={profile.avatarUrl}
+                            alt={profile.displayName}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '2px solid #f2ddc8',
+                            }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #f47d21, #dc4f24)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#fff',
+                            fontWeight: 800,
+                            fontSize: 15,
+                            flexShrink: 0,
+                          }}>
+                            {(profile.displayName || '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <strong>{profile.displayName}</strong>
+                          <span>{profile.handle}</span>
+                        </div>
                       </div>
                       <div className="ec-group-detail-actions">
                         <button
@@ -3416,13 +3468,37 @@ export default function Dashboard({
         .ec-dir-card .actions .save-btn.saved:hover {
           background: linear-gradient(135deg, #fff5eb, #ffeed9);
         }
-          border-radius: 999px;
-          padding: 6px 10px;
-          font-weight: 900;
-          color: #dc5b21;
-          text-decoration: none;
-          font-size: 12px;
+
+        .ec-card-email {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          margin-top: 4px;
         }
+
+        .ec-email-found {
+          color: #1f7a40 !important;
+        }
+
+        .ec-email-found svg {
+          color: #22883e;
+        }
+
+        .ec-email-missing {
+          color: #9a7e6c !important;
+          font-weight: 500 !important;
+        }
+
+        .ec-email-missing svg {
+          color: #c45a3a;
+        }
+
+        .ec-analysis-btn {
+          color: #6f594a !important;
+        }
+
 
         .ec-platforms {
           margin-top: 14px;
