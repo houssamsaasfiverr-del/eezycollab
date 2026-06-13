@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 
 export type SocialPlatform = 'YouTube' | 'Instagram' | 'TikTok' | 'Facebook' | 'Twitter';
+
+export type EmailSource = 'youtube' | 'instagram' | 'tiktok' | 'twitter' | 'web_search' | 'fallback';
 
 export interface CreatorProfile {
   id: string;
@@ -14,6 +17,7 @@ export interface CreatorProfile {
   views?: number;
   engagementRate?: number;
   email?: string;
+  emailSource?: EmailSource;
 }
 
 type YoutubeSearchOptions = {
@@ -247,6 +251,7 @@ async function fetchYoutubeCreators(
       views,
       engagementRate: views > 0 && followers > 0 ? Number(((followers / views) * 100).toFixed(2)) : undefined,
       email,
+      emailSource: email ? 'youtube' : undefined,
     };
     })
     .filter((profile): profile is CreatorProfile => profile !== null);
@@ -292,6 +297,7 @@ async function fetchTikTokCreator(query: string): Promise<CreatorProfile[]> {
         bio: data.title || 'TikTok creator profile',
         avatarUrl: data.thumbnail_url,
         profileUrl: data.author_url || url,
+        emailSource: undefined,
       },
     ];
   } catch (err) {
@@ -333,6 +339,7 @@ async function fetchInstagramCreator(query: string): Promise<CreatorProfile[]> {
         displayName: displayName,
         bio: data.title || 'Instagram creator profile',
         profileUrl: url,
+        emailSource: undefined,
       },
     ];
   } catch (err) {
@@ -355,6 +362,7 @@ async function fetchTwitterCreator(query: string): Promise<CreatorProfile[]> {
       bio: 'Twitter/X creator profile',
       avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(handle)}&background=1DA1F2&color=fff&size=150`,
       profileUrl: `https://x.com/${handle}`,
+      emailSource: undefined,
     },
   ];
 }
@@ -371,6 +379,156 @@ async function fetchTwitterCreator(query: string): Promise<CreatorProfile[]> {
  * }
  */
 
+/**
+ * Unified AI response helper with silent Groq fallback.
+ * Attempts Gemini first (with optional Google Search grounding).
+ * If Gemini fails for ANY reason, silently falls back to Groq.
+ */
+async function fetchAIResponseWithFallback(
+  prompt: string,
+  options?: { useSearch?: boolean },
+): Promise<string> {
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+
+  // --- Attempt 1: Gemini with optional Google Search grounding ---
+  if (geminiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const tools = options?.useSearch ? [{ googleSearch: {} } as any] : [];
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      if (text && text.trim().length > 0) return text;
+    } catch {
+      // Silently fall through to Groq — no user-facing error
+    }
+  }
+
+  // --- Attempt 2: Groq (silent fallback) ---
+  if (groqKey) {
+    try {
+      const groq = new Groq({ apiKey: groqKey, dangerouslyAllowBrowser: true });
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 4096,
+      });
+      return completion.choices?.[0]?.message?.content || '';
+    } catch {
+      // Both APIs failed — return empty
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Hierarchical email fallback: if a profile has no email,
+ * use AI web search grounding to look up their real business email.
+ */
+async function fetchEmailFallback(
+  platform: SocialPlatform,
+  handle: string,
+  profile: CreatorProfile,
+): Promise<CreatorProfile> {
+  if (profile.email) return profile;
+
+  const cleanHandle = handle.replace(/^@/, '');
+  const prompt = `Find the real, verified business contact email for the ${platform} influencer with the handle @${cleanHandle} (display name: "${profile.displayName}").
+
+IMPORTANT RULES:
+- Search the web for their actual business email, not a guess.
+- Check their official website, social media bios, About pages, and press kits.
+- Do NOT guess or fabricate an email. If you cannot find a real one, return "none".
+- Do NOT return generic emails like "${cleanHandle}@gmail.com" unless that is their actual verified email.
+
+Return ONLY a valid JSON object: {"email": "real@email.com"} or {"email": "none"}. No other text.`;
+
+  try {
+    const text = await fetchAIResponseWithFallback(prompt, { useSearch: true });
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleanText);
+    const foundEmail = parsed?.email;
+
+    if (
+      foundEmail &&
+      foundEmail !== 'none' &&
+      foundEmail !== '' &&
+      !foundEmail.includes('example.com') &&
+      foundEmail.includes('@')
+    ) {
+      return {
+        ...profile,
+        email: foundEmail.toLowerCase(),
+        emailSource: 'web_search',
+      };
+    }
+  } catch {
+    // Failed to find email — return unchanged profile
+  }
+
+  return profile;
+}
+
+/**
+ * Real handle lookup using Gemini/Groq search grounding.
+ * When native APIs return nothing for a specific handle, this searches the web
+ * for the real profile data.
+ */
+async function fetchAIHandleLookup(
+  platform: SocialPlatform,
+  handle: string,
+): Promise<CreatorProfile | null> {
+  const cleanHandle = handle.replace(/^@/, '');
+
+  const prompt = `Search the web for the ${platform} influencer/creator with the handle @${cleanHandle}.
+
+IMPORTANT RULES:
+- Find their REAL profile information from ${platform}.
+- Return their actual display name, bio, follower count, and business email.
+- If you CANNOT find this handle on ${platform}, return {"found": false}.
+- Do NOT fabricate data. Only return verified information.
+- For email: only return a real business email found on their profile, website, or bio. If none found, set email to "".
+
+Return ONLY a valid JSON object:
+{"found": true, "displayName": "...", "bio": "...", "followers": 123000, "email": "real@email.com" or ""}
+or
+{"found": false}
+No other text.`;
+
+  try {
+    const text = await fetchAIResponseWithFallback(prompt, { useSearch: true });
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const data = JSON.parse(cleanText);
+
+    if (!data.found) return null;
+
+    const email = data.email && data.email.includes('@') ? data.email.toLowerCase() : undefined;
+
+    return {
+      id: `ai-lookup-${cleanHandle}-${Date.now()}`,
+      platform,
+      handle: `@${cleanHandle}`,
+      displayName: data.displayName || cleanHandle,
+      bio: data.bio || `${platform} creator`,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.displayName || cleanHandle)}&background=6C63FF&color=fff&size=150`,
+      profileUrl:
+        platform === 'YouTube' ? `https://youtube.com/@${cleanHandle}` :
+        platform === 'TikTok' ? `https://tiktok.com/@${cleanHandle}` :
+        platform === 'Twitter' ? `https://x.com/${cleanHandle}` :
+        `https://www.instagram.com/${cleanHandle}/`,
+      followers: typeof data.followers === 'number' ? data.followers : parseInt(String(data.followers).replace(/[^0-9]/g, '')) || undefined,
+      email,
+      emailSource: email ? 'web_search' : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// @ts-ignore - Kept as reference data, no longer used in search flows
 const premiumCreators: Record<SocialPlatform, Array<{ handle: string, displayName: string, bio: string, avatarUrl: string, profileUrl: string, followers: number, views: number, email: string }>> = {
   YouTube: [
     {
@@ -643,6 +801,9 @@ const premiumCreators: Record<SocialPlatform, Array<{ handle: string, displayNam
   Facebook: []
 };
 
+// NOTE: premiumCreators above is kept for reference but no longer used in search flows.
+// All creator discovery now goes through real APIs + AI search grounding.
+
 /**
  * Fetch creators from Zernio Unified API (if API key configured).
  * Falls back gracefully to empty array when not configured.
@@ -709,78 +870,8 @@ async function fetchZernioCreators(
       if (mapped.length > 0) return mapped;
     }
 
-    // 4. Since the accounts list is empty, return tailored premium creators matching search filters
-    const platformList = premiumCreators[platform] || [];
-    let matched = [...platformList];
-
-    if (cleanQuery) {
-      const queryLower = cleanQuery.toLowerCase();
-      matched = platformList.filter(
-        c => c.handle.toLowerCase().includes(queryLower) ||
-             c.displayName.toLowerCase().includes(queryLower) ||
-             c.bio.toLowerCase().includes(queryLower)
-      );
-
-      // If they searched for a specific handle or custom term and got no exact match from our list,
-      // dynamically generate a gorgeous custom, premium creator card matching their exact handle/search!
-      if (matched.length === 0) {
-        const isHandleSearch = cleanQuery.startsWith('@') || cleanQuery.includes('_') || cleanQuery.includes('.');
-        if (isHandleSearch) {
-          matched.push({
-            handle: `@${cleanQuery}`,
-            displayName: cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1),
-            bio: `Premium ${platform} content creator specializing in ${cleanQuery} and strategic brand collaborations. Verified active Zernio channel connection.`,
-            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanQuery)}&background=0284C7&color=fff&size=150`,
-            profileUrl: platform === 'YouTube' ? `https://youtube.com/@${cleanQuery}` :
-                        platform === 'TikTok' ? `https://www.tiktok.com/@${cleanQuery}` :
-                        platform === 'Twitter' ? `https://x.com/${cleanQuery}` :
-                        `https://www.instagram.com/${cleanQuery}/`,
-            followers: Math.floor(Math.random() * 450000) + 75000,
-            views: Math.floor(Math.random() * 9000000) + 1200000,
-            email: `${cleanQuery.toLowerCase()}@gmail.com`
-          });
-        } else {
-          // Broad keyword query like "fashion" - generate a beautiful set of 4 relevant niche creators!
-          const capitalQuery = cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
-          const niches = [
-            { suffix: 'Vibe', desc: 'aesthetic inspiration, outfits of the day, and seasonal styling guide' },
-            { suffix: 'Studio', desc: 'editorial photography, runway collections, and creative designs' },
-            { suffix: 'Diaries', desc: 'lifestyle vlogs, personal beauty routines, and travel aesthetics' },
-            { suffix: 'Trends', desc: 'latest high-street fashion finds, haul videos, and lookbooks' }
-          ];
-
-          niches.forEach((n, idx) => {
-            const handleName = `${cleanQuery.toLowerCase()}_${n.suffix.toLowerCase()}`;
-            matched.push({
-              handle: `@${handleName}`,
-              displayName: `${capitalQuery} ${n.suffix}`,
-              bio: `Digital creator sharing ${n.desc}. Open for global sponsorships and PR collaborations.`,
-              avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(capitalQuery + ' ' + n.suffix)}&background=${idx % 2 === 0 ? '0D9488' : '0284C7'}&color=fff&size=150`,
-              profileUrl: platform === 'YouTube' ? `https://youtube.com/@${handleName}` :
-                          platform === 'TikTok' ? `https://www.tiktok.com/@${handleName}` :
-                          platform === 'Twitter' ? `https://x.com/${handleName}` :
-                          `https://www.instagram.com/${handleName}/`,
-              followers: Math.floor(Math.random() * 320000) + 60000 + (idx * 50000),
-              views: Math.floor(Math.random() * 6000000) + 900000,
-              email: `${handleName}@gmail.com`
-            });
-          });
-        }
-      }
-    }
-
-    return matched.map((item, i) => ({
-      id: `zernio-verified-${platform}-${i}-${Date.now()}`,
-      platform,
-      handle: item.handle,
-      displayName: item.displayName,
-      bio: item.bio,
-      avatarUrl: item.avatarUrl,
-      profileUrl: item.profileUrl,
-      followers: item.followers,
-      views: item.views,
-      email: item.email,
-    }));
+    // 4. No connected accounts found — return empty. AI fallback will handle it in fetchCreatorProfiles.
+    return [];
 
   } catch (e) {
     console.error('Zernio API error:', e);
@@ -829,25 +920,28 @@ export async function fetchCreatorProfiles(
     }
   }
 
-  // Synthesize a beautiful fallback card for exact handle/username queries if still empty
-  if (merged.length === 0 && (query.startsWith('@') || query.length > 2)) {
-    const handle = query.replace(/^@/, '');
-    merged.push({
-      id: `synthetic-${handle}-${Date.now()}`,
-      platform,
-      handle: `@${handle}`,
-      displayName: handle.charAt(0).toUpperCase() + handle.slice(1),
-      bio: `${platform} content creator specializing in premium lifestyle and brand storytelling. Open to sponsorships and collaborations.`,
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(handle)}&background=E07A5F&color=fff&size=150`,
-      profileUrl: platform === 'YouTube' ? `https://youtube.com/@${handle}` :
-                  platform === 'TikTok' ? `https://tiktok.com/@${handle}` :
-                  platform === 'Twitter' ? `https://x.com/${handle}` :
-                  `https://www.instagram.com/${handle}/`,
-      followers: Math.floor(Math.random() * 450000) + 75000,
-      views: Math.floor(Math.random() * 9000000) + 1200000,
-      email: `${handle}@gmail.com`,
-    });
+  // If still empty and it looks like a handle search, use AI handle lookup (real web data)
+  const isHandleSearch = query.startsWith('@') || query.includes('_') || query.includes('.');
+  if (merged.length === 0 && isHandleSearch) {
+    const aiProfile = await fetchAIHandleLookup(platform, query);
+    if (aiProfile) {
+      merged.push(aiProfile);
+    }
   }
+
+  // Hierarchical email fallback: for profiles without an email, attempt web search lookup
+  // Limit to first 10 to avoid excessive API calls
+  const emailLookupPromises = merged
+    .filter(p => !p.email)
+    .slice(0, 10)
+    .map(async (p) => {
+      const updated = await fetchEmailFallback(platform, p.handle, p);
+      if (updated.email) {
+        p.email = updated.email;
+        p.emailSource = updated.emailSource;
+      }
+    });
+  await Promise.allSettled(emailLookupPromises);
 
   return merged;
 }
@@ -864,36 +958,49 @@ export function profileMeta(profile: CreatorProfile): string {
 }
 
 export async function fetchAIRecommendations(platform: SocialPlatform, description: string, hashtags: string): Promise<CreatorProfile[]> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) return [];
+  const prompt = `You are an influencer marketing expert. Search the web and recommend 50 real, currently active ${platform} influencers for a campaign with this description: "${description}" and hashtags: "${hashtags}".
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+IMPORTANT RULES:
+- Only recommend REAL influencers that actually exist on ${platform}.
+- Search the web for their actual profile details, follower counts, and business emails.
+- For "email": ONLY include a real, verified business email you found on their website, bio, or profile. If you cannot find a real email, set it to "".
+- Do NOT guess or fabricate emails (e.g. do NOT generate "username@gmail.com" patterns).
+- For "emailSource": set to "web_search" if you found the email through web search, "${platform.toLowerCase()}" if from their ${platform} profile, or "" if no email found.
 
-  const prompt = `You are an influencer marketing expert. Recommend 150 real ${platform} influencers for a campaign with this description: "${description}" and hashtags: "${hashtags}".
-Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@username"), "displayName", "bio" (short 1-sentence description), "followers" (estimated number), "email" (business email if available, format: name@domain.com). Do not include markdown formatting or backticks.`;
+Return ONLY a valid JSON array of objects with these keys: "handle" (e.g. "@username"), "displayName", "bio" (short 1-sentence description), "followers" (number), "email" (string or ""), "emailSource" (string or ""). No markdown formatting or backticks.`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await fetchAIResponseWithFallback(prompt, { useSearch: true });
+    if (!text) return [];
+
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const data = JSON.parse(cleanText);
 
-    return data.map((item: any, index: number) => ({
-      id: `ai-rec-${index}-${Date.now()}`,
-      platform: platform,
-      handle: item.handle,
-      displayName: item.displayName || item.handle,
-      bio: item.bio,
-      followers: typeof item.followers === 'number' ? item.followers : parseInt(String(item.followers).replace(/[^0-9]/g, '')) || 0,
-      email: extractRealEmail(String(item.email || '')),
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.displayName || item.handle)}&background=random&color=fff&size=150`,
-      profileUrl: platform === 'YouTube' ? `https://youtube.com/${item.handle}` :
-                  platform === 'TikTok' ? `https://tiktok.com/${item.handle}` :
-                  platform === 'Twitter' ? `https://x.com/${String(item.handle).replace('@', '')}` :
-                  platform === 'Facebook' ? `https://facebook.com/${String(item.handle).replace('@', '')}` :
-                  `https://instagram.com/${String(item.handle).replace('@', '')}`
-    }));
+    return data.map((item: any, index: number) => {
+      const rawEmail = extractRealEmail(String(item.email || ''));
+      // Filter out obviously fabricated emails
+      const email = rawEmail && !rawEmail.endsWith('@gmail.com') ? rawEmail : (rawEmail && item.emailSource ? rawEmail : undefined);
+      const emailSource: EmailSource | undefined = email
+        ? (item.emailSource === platform.toLowerCase() ? item.emailSource as EmailSource : 'web_search')
+        : undefined;
+
+      return {
+        id: `ai-rec-${index}-${Date.now()}`,
+        platform: platform,
+        handle: item.handle,
+        displayName: item.displayName || item.handle,
+        bio: item.bio,
+        followers: typeof item.followers === 'number' ? item.followers : parseInt(String(item.followers).replace(/[^0-9]/g, '')) || 0,
+        email,
+        emailSource,
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.displayName || item.handle)}&background=random&color=fff&size=150`,
+        profileUrl: platform === 'YouTube' ? `https://youtube.com/${item.handle}` :
+                    platform === 'TikTok' ? `https://tiktok.com/${item.handle}` :
+                    platform === 'Twitter' ? `https://x.com/${String(item.handle).replace('@', '')}` :
+                    platform === 'Facebook' ? `https://facebook.com/${String(item.handle).replace('@', '')}` :
+                    `https://instagram.com/${String(item.handle).replace('@', '')}`
+      };
+    });
   } catch (error) {
     console.error('AI recommendation error:', error);
     return [];

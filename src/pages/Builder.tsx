@@ -454,7 +454,10 @@ export default function Builder() {
           platform,
           hashtags || productDescription || "",
         );
-      } else {
+      }
+
+      // Always fall back to AI recommendations if no results, regardless of Zernio key
+      if (results.length === 0) {
         results = await autoRecommendCreators(
           platform,
           productDescription,
@@ -1284,6 +1287,16 @@ export default function Builder() {
                                   No public email found
                                 </p>
                               )}
+                              {profile.email && (profile as any).emailSource && (
+                                <span className="ec-email-source-badge">
+                                  via {(profile as any).emailSource === 'web_search' ? 'browser search'
+                                    : (profile as any).emailSource === 'youtube' ? 'YouTube account'
+                                    : (profile as any).emailSource === 'instagram' ? 'Instagram account'
+                                    : (profile as any).emailSource === 'tiktok' ? 'TikTok account'
+                                    : (profile as any).emailSource === 'twitter' ? 'Twitter account'
+                                    : (profile as any).emailSource}
+                                </span>
+                              )}
                             </div>
                             {profile.avatarUrl && (
                               <img
@@ -1536,7 +1549,7 @@ export default function Builder() {
                   Delivery:{" "}
                   {smtpConfig.enabled
                     ? "Your SMTP (optional)"
-                    : "Project email (default)"}
+                    : "Platform SMTP (default)"}
                 </span>
               </div>
             </div>
@@ -1560,7 +1573,7 @@ export default function Builder() {
               </div>
               <p>
                 Add recipients, compose a reusable message, and send bulk emails
-                via Brevo (or your own SMTP if configured). Use placeholders
+                via platform SMTP (or your own SMTP if configured). Use placeholders
                 like {"{{name}}"} in subject/body.
               </p>
 
@@ -2460,6 +2473,19 @@ export default function Builder() {
 
         .ec-email-missing svg {
           color: #c45a3a;
+        }
+
+        .ec-email-source-badge {
+          font-size: 10px;
+          color: #6d5c4f;
+          background-color: #f7ede2;
+          border-radius: 4px;
+          padding: 1px 6px;
+          display: inline-block;
+          width: fit-content;
+          margin-top: 2px;
+          font-weight: 500;
+          letter-spacing: 0.2px;
         }
 
         .ec-results-grid img {

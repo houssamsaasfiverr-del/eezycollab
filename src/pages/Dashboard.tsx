@@ -884,8 +884,8 @@ export default function Dashboard({
         );
       }
 
-      // Only fall back to Gemini AI recommendations if Zernio is NOT configured
-      if (results.length === 0 && !zernioKey) {
+      // Fall back to Gemini/Groq AI recommendations if no results from any source
+      if (results.length === 0) {
         const aiDescription = description || keyword || "Influencer campaign";
         const aiHashtags = keyword || directoryBioKeywords || "";
         results = await autoRecommendCreators(
@@ -1302,6 +1302,16 @@ export default function Dashboard({
                                     <MailX size={12} />
                                     No public email found
                                   </p>
+                                )}
+                                {profile.email && (profile as any).emailSource && (
+                                  <span className="ec-email-source-badge">
+                                    via {(profile as any).emailSource === 'web_search' ? 'browser search'
+                                      : (profile as any).emailSource === 'youtube' ? 'YouTube account'
+                                      : (profile as any).emailSource === 'instagram' ? 'Instagram account'
+                                      : (profile as any).emailSource === 'tiktok' ? 'TikTok account'
+                                      : (profile as any).emailSource === 'twitter' ? 'Twitter account'
+                                      : (profile as any).emailSource}
+                                  </span>
                                 )}
                               </div>
                               {profile.avatarUrl && (
@@ -1805,7 +1815,7 @@ export default function Dashboard({
             <div className="ec-empty-state">
               <Loader2 size={24} className="spin" />
               <h3>Syncing inbox events</h3>
-              <p>Checking Brevo delivery and reply activity...</p>
+              <p>Checking email delivery and reply activity...</p>
             </div>
           )}
 
@@ -2102,6 +2112,16 @@ export default function Dashboard({
                 <div>
                   <strong>Email</strong>
                   <span>{selectedInfluencer.email}</span>
+                  {(selectedInfluencer as any).emailSource && (
+                    <span className="ec-email-source-badge" style={{ marginLeft: 6 }}>
+                      via {(selectedInfluencer as any).emailSource === 'web_search' ? 'browser search'
+                        : (selectedInfluencer as any).emailSource === 'youtube' ? 'YouTube account'
+                        : (selectedInfluencer as any).emailSource === 'instagram' ? 'Instagram account'
+                        : (selectedInfluencer as any).emailSource === 'tiktok' ? 'TikTok account'
+                        : (selectedInfluencer as any).emailSource === 'twitter' ? 'Twitter account'
+                        : (selectedInfluencer as any).emailSource}
+                    </span>
+                  )}
                 </div>
               ) : selectedInfluencer.profileUrl ? (
                 <div>
@@ -3493,6 +3513,19 @@ export default function Dashboard({
 
         .ec-email-missing svg {
           color: #c45a3a;
+        }
+
+        .ec-email-source-badge {
+          font-size: 10px;
+          color: #6d5c4f;
+          background-color: #f7ede2;
+          border-radius: 4px;
+          padding: 1px 6px;
+          display: inline-block;
+          width: fit-content;
+          margin-top: 2px;
+          font-weight: 500;
+          letter-spacing: 0.2px;
         }
 
         .ec-analysis-btn {

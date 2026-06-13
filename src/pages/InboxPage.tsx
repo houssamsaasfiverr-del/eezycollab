@@ -5,7 +5,6 @@ import {
   Check,
   Loader2,
   Mail,
-  MessageSquare,
   Settings,
   Sparkles,
   Send,

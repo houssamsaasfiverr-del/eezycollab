@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './_supabaseAdmin';
-import { sendBrevoEmail } from './_brevo';
+import { sendPlatformEmail } from './_smtp';
 import nodemailer from 'nodemailer';
 
 interface RecipientInput {
@@ -75,8 +75,8 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'No valid recipient emails provided' });
     }
 
-    let finalSenderEmail = senderEmail || process.env.BREVO_SENDER_EMAIL;
-    let finalSenderName = senderName || process.env.BREVO_SENDER_NAME || 'CollabFree';
+    let finalSenderEmail = senderEmail || process.env.PLATFORM_SENDER_EMAIL;
+    let finalSenderName = senderName || process.env.PLATFORM_SENDER_NAME || 'CollabFree';
 
     let smtpTransport: nodemailer.Transporter | null = null;
 
@@ -126,7 +126,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (finalDeliveryMethod === 'project' && !finalSenderEmail) {
-      return res.status(500).json({ error: 'BREVO_SENDER_EMAIL is missing' });
+      return res.status(500).json({ error: 'PLATFORM_SENDER_EMAIL is missing' });
     }
 
     const results: Array<{
@@ -158,9 +158,9 @@ export default async function handler(req: any, res: any) {
 
           providerMessageId = String(info.messageId || '');
         } else {
-          const sendResult = await sendBrevoEmail({
-            senderEmail: finalSenderEmail,
-            senderName: finalSenderName,
+          const sendResult = await sendPlatformEmail({
+            senderEmail: finalSenderEmail as string,
+            senderName: finalSenderName as string,
             recipient,
             subject: renderedSubject,
             htmlContent: htmlBody,
@@ -193,7 +193,7 @@ export default async function handler(req: any, res: any) {
       user_id: userId,
       project_id: projectId || null,
       direction: 'outbound',
-      provider: finalDeliveryMethod === 'user_smtp' ? 'user_smtp' : 'brevo',
+      provider: finalDeliveryMethod === 'user_smtp' ? 'user_smtp' : 'platform_smtp',
       recipient_email: item.email,
       recipient_name: item.name || null,
       sender_email: finalSenderEmail,
