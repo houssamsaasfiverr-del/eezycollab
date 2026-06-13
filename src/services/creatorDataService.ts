@@ -436,21 +436,34 @@ async function fetchEmailFallback(
   if (profile.email) return profile;
 
   const cleanHandle = handle.replace(/^@/, '');
-  const prompt = `Find the real, verified business contact email for the ${platform} influencer with the handle @${cleanHandle} (display name: "${profile.displayName}").
+  const prompt = `Find the real, verified business contact email for the creator/influencer "@${cleanHandle}" (display name: "${profile.displayName}").
+
+Although their primary platform here is listed as ${platform}, they might have their email listed on other platforms or their personal website.
 
 IMPORTANT RULES:
-- Search the web for their actual business email, not a guess.
-- Check their official website, social media bios, About pages, and press kits.
-- Do NOT guess or fabricate an email. If you cannot find a real one, return "none".
+- Search the web for their actual business email, not a guess. Check their official website contact/About page, and their profiles on OTHER platforms (YouTube, Instagram, TikTok, Twitter/X, LinkedIn, Crunchbase).
+- If you find their email on Instagram (e.g. in their bio), YouTube, or their website, return it.
+- Set the "source" property in the JSON based on where you found the email:
+  * "web_search" (if found on their website, Crunchbase, etc.)
+  * "instagram" (if found on their Instagram profile/bio)
+  * "youtube" (if found on their YouTube channel/description)
+  * "tiktok" (if found on their TikTok profile)
+  * "twitter" (if found on their Twitter/X profile)
+- Do NOT guess or fabricate an email. If you cannot find a real, verified email, set "email" to "none" and "source" to "".
 - Do NOT return generic emails like "${cleanHandle}@gmail.com" unless that is their actual verified email.
 
-Return ONLY a valid JSON object: {"email": "real@email.com"} or {"email": "none"}. No other text.`;
+Return ONLY a valid JSON object in this format:
+{"email": "real@email.com", "source": "web_search"}
+or
+{"email": "none", "source": ""}
+Do not include any markdown formatting or code blocks.`;
 
   try {
     const text = await fetchAIResponseWithFallback(prompt, { useSearch: true });
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanText);
     const foundEmail = parsed?.email;
+    const foundSource = parsed?.source;
 
     if (
       foundEmail &&
@@ -459,10 +472,13 @@ Return ONLY a valid JSON object: {"email": "real@email.com"} or {"email": "none"
       !foundEmail.includes('example.com') &&
       foundEmail.includes('@')
     ) {
+      const validSources: EmailSource[] = ['youtube', 'instagram', 'tiktok', 'twitter', 'web_search'];
+      const emailSource = (validSources.includes(foundSource) ? foundSource : 'web_search') as EmailSource;
+
       return {
         ...profile,
         email: foundEmail.toLowerCase(),
-        emailSource: 'web_search',
+        emailSource,
       };
     }
   } catch {
@@ -483,17 +499,24 @@ async function fetchAIHandleLookup(
 ): Promise<CreatorProfile | null> {
   const cleanHandle = handle.replace(/^@/, '');
 
-  const prompt = `Search the web for the ${platform} influencer/creator with the handle @${cleanHandle}.
+  const prompt = `Search the web for the creator/influencer with the handle @${cleanHandle}.
 
 IMPORTANT RULES:
-- Find their REAL profile information from ${platform}.
-- Return their actual display name, bio, follower count, and business email.
-- If you CANNOT find this handle on ${platform}, return {"found": false}.
+- Find their REAL profile information. The user expects them to be active on ${platform}, but they might have accounts on other platforms or their own website.
+- If you find them, return their actual display name, bio, follower count, and business email.
+- For email: search the web and other platforms (YouTube, Instagram, TikTok, Twitter/X, and their website). Only return a real business email found on their profile, website, or bio. If none found, set email to "".
+- Set the "emailSource" property in the JSON based on where you found the email:
+  * "web_search" (if found on their website, Crunchbase, etc.)
+  * "instagram" (if found on their Instagram profile/bio)
+  * "youtube" (if found on their YouTube channel/description)
+  * "tiktok" (if found on their TikTok profile)
+  * "twitter" (if found on their Twitter/X profile)
+  * "" (if no email found)
+- If you CANNOT find this creator/handle anywhere, return {"found": false}.
 - Do NOT fabricate data. Only return verified information.
-- For email: only return a real business email found on their profile, website, or bio. If none found, set email to "".
 
 Return ONLY a valid JSON object:
-{"found": true, "displayName": "...", "bio": "...", "followers": 123000, "email": "real@email.com" or ""}
+{"found": true, "displayName": "...", "bio": "...", "followers": 123000, "email": "real@email.com" or "", "emailSource": "web_search" or ""}
 or
 {"found": false}
 No other text.`;
@@ -506,6 +529,9 @@ No other text.`;
     if (!data.found) return null;
 
     const email = data.email && data.email.includes('@') ? data.email.toLowerCase() : undefined;
+    const foundSource = data.emailSource;
+    const validSources: EmailSource[] = ['youtube', 'instagram', 'tiktok', 'twitter', 'web_search'];
+    const emailSource = email && validSources.includes(foundSource) ? foundSource as EmailSource : (email ? 'web_search' as EmailSource : undefined);
 
     return {
       id: `ai-lookup-${cleanHandle}-${Date.now()}`,
@@ -521,7 +547,7 @@ No other text.`;
         `https://www.instagram.com/${cleanHandle}/`,
       followers: typeof data.followers === 'number' ? data.followers : parseInt(String(data.followers).replace(/[^0-9]/g, '')) || undefined,
       email,
-      emailSource: email ? 'web_search' : undefined,
+      emailSource,
     };
   } catch {
     return null;
@@ -930,10 +956,10 @@ export async function fetchCreatorProfiles(
   }
 
   // Hierarchical email fallback: for profiles without an email, attempt web search lookup
-  // Limit to first 10 to avoid excessive API calls
+  // Limit to first 15 to avoid excessive API calls
   const emailLookupPromises = merged
     .filter(p => !p.email)
-    .slice(0, 10)
+    .slice(0, 15)
     .map(async (p) => {
       const updated = await fetchEmailFallback(platform, p.handle, p);
       if (updated.email) {
