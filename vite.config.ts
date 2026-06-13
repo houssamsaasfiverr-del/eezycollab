@@ -7,4 +7,12 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    proxy: {
+      '/api/email': {
+        target: 'http://localhost:5000',
+        changeOrigin: true
+      }
+    }
+  }
 });

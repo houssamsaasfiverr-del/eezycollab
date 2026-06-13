@@ -29,9 +29,10 @@ export interface CampaignEmailLog {
   created_at: string;
   updated_at: string;
 }
+const API_BASE = import.meta.env.VITE_EMAIL_SERVER_URL || '';
 
 export async function sendBulkEmails(options: SendBulkEmailOptions) {
-  const response = await fetch('/api/brevo-send', {
+  const response = await fetch(`${API_BASE}/api/email/send`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -41,7 +42,7 @@ export async function sendBulkEmails(options: SendBulkEmailOptions) {
 
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('API route /api/brevo-send is not running. If running locally, please use vercel dev.');
+    throw new Error(`API route ${API_BASE}/api/email/send is not running. If running locally, please use vercel dev.`);
   }
 
   const payload = await response.json();
@@ -69,11 +70,11 @@ export async function fetchCampaignInbox(userId: string, projectId?: string | nu
     params.set('projectId', projectId);
   }
 
-  const response = await fetch(`/api/brevo-inbox?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/api/email/inbox?${params.toString()}`);
   
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('API route /api/brevo-inbox is not running. If running locally, please use vercel dev.');
+    throw new Error(`API route ${API_BASE}/api/email/inbox is not running. If running locally, please use vercel dev.`);
   }
 
   const payload = await response.json();

@@ -30,10 +30,12 @@ function ensureJsonResponse(response: Response, routeLabel: string) {
   }
 }
 
+const API_BASE = import.meta.env.VITE_EMAIL_SERVER_URL || '';
+
 export async function fetchUserSmtpConfig(userId: string): Promise<UserSmtpConfig> {
   const params = new URLSearchParams({ userId });
-  const response = await fetch(`/api/user-smtp-config?${params.toString()}`);
-  ensureJsonResponse(response, '/api/user-smtp-config');
+  const response = await fetch(`${API_BASE}/api/email/smtp-config?${params.toString()}`);
+  ensureJsonResponse(response, `${API_BASE}/api/email/smtp-config`);
 
   const payload = await response.json();
   if (!response.ok) {
@@ -44,7 +46,7 @@ export async function fetchUserSmtpConfig(userId: string): Promise<UserSmtpConfi
 }
 
 export async function saveUserSmtpConfig(input: SaveUserSmtpConfigInput): Promise<{ success: boolean; enabled: boolean; configured: boolean; hasPassword: boolean }> {
-  const response = await fetch('/api/user-smtp-config', {
+  const response = await fetch(`${API_BASE}/api/email/smtp-config`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -52,7 +54,7 @@ export async function saveUserSmtpConfig(input: SaveUserSmtpConfigInput): Promis
     body: JSON.stringify(input)
   });
 
-  ensureJsonResponse(response, '/api/user-smtp-config');
+  ensureJsonResponse(response, `${API_BASE}/api/email/smtp-config`);
 
   const payload = await response.json();
   if (!response.ok) {
