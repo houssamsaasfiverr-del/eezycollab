@@ -189,7 +189,7 @@ export async function sendCampaign(req: Request, res: Response) {
                                   <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #6366f1; color: #ffffff; font-weight: bold; font-size: 18px; line-height: 32px; text-align: center; font-family: sans-serif;">C</div>
                                 </td>
                                 <td style="vertical-align: middle; padding-left: 8px;">
-                                  <span style="font-size: 20px; font-weight: 800; color: #1e1b4b; letter-spacing: -0.5px; font-family: sans-serif;">CollabFree</span>
+                                  <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="font-size: 20px; font-weight: 800; color: #1e1b4b; letter-spacing: -0.5px; font-family: sans-serif; text-decoration: none;">CollabFree</a>
                                 </td>
                               </tr>
                             </table>
@@ -304,7 +304,7 @@ export async function sendCampaign(req: Request, res: Response) {
                       <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #f3f2f8; padding-top: 20px;">
                         <tr>
                           <td align="center" style="font-size: 11px; color: #8b8998; line-height: 1.5; font-family: sans-serif;">
-                            Sent with ❤️ by <a href="https://collabfree.com" style="color: #6366f1; text-decoration: none; font-weight: 600;">CollabFree</a> &bull; Connect with the best brands.
+                            Sent with ❤️ by <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="color: #6366f1; text-decoration: none; font-weight: 600;">CollabFree</a> &bull; Connect with the best brands.
                           </td>
                         </tr>
                       </table>
