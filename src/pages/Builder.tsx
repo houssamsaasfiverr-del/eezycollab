@@ -110,6 +110,8 @@ export default function Builder() {
   const [creatorResults, setCreatorResults] = useState<CreatorProfile[]>([]);
   const [creatorLoading, setCreatorLoading] = useState(false);
   const [creatorError, setCreatorError] = useState("");
+  const [editingEmailId, setEditingEmailId] = useState<string | null>(null);
+  const [editingEmailValue, setEditingEmailValue] = useState<string>("");
   const [messageTemplate, setMessageTemplate] = useState(
     defaultOutreachTemplate,
   );
@@ -263,6 +265,8 @@ export default function Builder() {
           engagementRate: row.engagement_rate
             ? Number(row.engagement_rate)
             : undefined,
+          email: row.email || undefined,
+          emailSource: row.email_source || undefined,
         }));
         setSavedInfluencers(profiles);
       }
@@ -271,6 +275,71 @@ export default function Builder() {
     } finally {
       setSavedInfluencersLoading(false);
     }
+  };
+
+  const handleSaveEmail = async (profile: CreatorProfile) => {
+    const trimmedEmail = editingEmailValue.trim().toLowerCase();
+    if (trimmedEmail && !trimmedEmail.includes('@')) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
+    if (user) {
+      try {
+        const safeHandle = profile.handle?.trim() || profile.displayName?.trim() || profile.id;
+        const safeDisplayName = profile.displayName?.trim() || profile.handle?.trim() || "Creator";
+        
+        const { error } = await supabase.from("saved_influencers").upsert(
+          {
+            user_id: user.uid,
+            influencer_id: profile.id,
+            platform: profile.platform,
+            handle: safeHandle,
+            display_name: safeDisplayName,
+            bio: profile.bio || null,
+            avatar_url: profile.avatarUrl || null,
+            profile_url: profile.profileUrl || null,
+            followers: profile.followers ? Math.min(Math.floor(Number(profile.followers)), 2147483647) : null,
+            views: profile.views ? Math.min(Math.floor(Number(profile.views)), 2147483647) : null,
+            engagement_rate: profile.engagementRate || null,
+            email: trimmedEmail || null,
+            email_source: trimmedEmail ? "manual" : null,
+          },
+          {
+            onConflict: "user_id,influencer_id",
+          }
+        );
+        
+        if (error) throw error;
+        
+        // Update local saved lists
+        setSavedInfluencers((prev) => {
+          const exists = prev.some((s) => s.id === profile.id);
+          if (exists) {
+            return prev.map((s) =>
+              s.id === profile.id
+                ? { ...s, email: trimmedEmail || undefined, emailSource: trimmedEmail ? "manual" : undefined }
+                : s
+            );
+          } else {
+            return [{ ...profile, email: trimmedEmail || undefined, emailSource: trimmedEmail ? "manual" : undefined }, ...prev];
+          }
+        });
+      } catch (err) {
+        console.error("Failed to persist email:", err);
+      }
+    }
+
+    // Update in local creatorResults state so it shows immediately in the recommended listing
+    setCreatorResults((prev) =>
+      prev.map((c) =>
+        c.id === profile.id
+          ? { ...c, email: trimmedEmail || undefined, emailSource: trimmedEmail ? "manual" : undefined }
+          : c
+      )
+    );
+
+    setEditingEmailId(null);
   };
 
   useEffect(() => {
@@ -525,6 +594,15 @@ export default function Builder() {
       );
     }
 
+    // Sort so that influencers who have email show first, and then others
+    filtered.sort((a, b) => {
+      const aHas = !!a.email;
+      const bHas = !!b.email;
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+      return 0;
+    });
+
     return filtered;
   }, [creatorResults, influencerFilters, searchQuery]);
 
@@ -644,9 +722,20 @@ export default function Builder() {
   // Auto-populate recipients when entering step 4
   useEffect(() => {
     if (step === 4 && parsedInfluencers.length > 0 && !recipientInput.trim()) {
-      setRecipientInput(parsedInfluencers.join("\n"));
+      const resolved = parsedInfluencers.map((handle) => {
+        const profile =
+          creatorResults.find((c) => c.handle === handle) ||
+          savedInfluencers.find((s) => s.handle === handle);
+        if (profile?.email) {
+          return profile.displayName
+            ? `${profile.displayName} <${profile.email}>`
+            : profile.email;
+        }
+        return handle;
+      });
+      setRecipientInput(resolved.join("\n"));
     }
-  }, [step, parsedInfluencers, recipientInput]);
+  }, [step, parsedInfluencers, recipientInput, creatorResults, savedInfluencers]);
 
   const toggleShortlist = (profile: CreatorProfile) => {
     const current = influencerInput
@@ -1276,16 +1365,91 @@ export default function Builder() {
                             <div>
                               <h3>{profile.displayName}</h3>
                               <p>{profile.handle}</p>
-                              {profile.email ? (
-                                <p className="ec-card-email ec-email-found">
-                                  <Mail size={12} />
-                                  {profile.email}
-                                </p>
+                              {editingEmailId === profile.id ? (
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px', marginBottom: '6px' }}>
+                                  <input
+                                    type="email"
+                                    value={editingEmailValue}
+                                    onChange={(e) => setEditingEmailValue(e.target.value)}
+                                    placeholder="Enter email..."
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #dc4f24',
+                                      fontSize: '12px',
+                                      width: '150px',
+                                      outline: 'none'
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); void handleSaveEmail(profile); }}
+                                    style={{
+                                      background: '#dc4f24',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      padding: '3px 6px',
+                                      fontSize: '11px',
+                                      cursor: 'pointer',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setEditingEmailId(null); }}
+                                    style={{
+                                      background: '#eee',
+                                      color: '#333',
+                                      border: '1px solid #ccc',
+                                      borderRadius: '4px',
+                                      padding: '3px 6px',
+                                      fontSize: '11px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               ) : (
-                                <p className="ec-card-email ec-email-missing">
-                                  <MailX size={12} />
-                                  No public email found
-                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '4px' }}>
+                                  {profile.email ? (
+                                    <p className="ec-card-email ec-email-found" style={{ margin: 0 }}>
+                                      <Mail size={12} />
+                                      {profile.email}
+                                    </p>
+                                  ) : (
+                                    <p className="ec-card-email ec-email-missing" style={{ margin: 0 }}>
+                                      <MailX size={12} />
+                                      No public email found
+                                    </p>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingEmailId(profile.id);
+                                      setEditingEmailValue(profile.email || "");
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#f57c24',
+                                      cursor: 'pointer',
+                                      padding: '0 4px',
+                                      fontSize: '11px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '2px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    {profile.email ? "(Edit)" : "(Add Email)"}
+                                  </button>
+                                </div>
                               )}
                               {profile.email && (profile as any).emailSource && (
                                 <span className="ec-email-source-badge">
@@ -1294,6 +1458,7 @@ export default function Builder() {
                                     : (profile as any).emailSource === 'instagram' ? 'Instagram account'
                                     : (profile as any).emailSource === 'tiktok' ? 'TikTok account'
                                     : (profile as any).emailSource === 'twitter' ? 'Twitter account'
+                                    : (profile as any).emailSource === 'manual' ? 'manually added'
                                     : (profile as any).emailSource}
                                 </span>
                               )}
@@ -1600,7 +1765,18 @@ export default function Builder() {
                     type="button"
                     onClick={() => {
                       if (parsedInfluencers.length > 0) {
-                        setRecipientInput(parsedInfluencers.join("\n"));
+                        const resolved = parsedInfluencers.map((handle) => {
+                          const profile =
+                            creatorResults.find((c) => c.handle === handle) ||
+                            savedInfluencers.find((s) => s.handle === handle);
+                          if (profile?.email) {
+                            return profile.displayName
+                              ? `${profile.displayName} <${profile.email}>`
+                              : profile.email;
+                          }
+                          return handle;
+                        });
+                        setRecipientInput(resolved.join("\n"));
                       }
                     }}
                     disabled={parsedInfluencers.length === 0}
@@ -1629,10 +1805,15 @@ export default function Builder() {
                     type="button"
                     onClick={() => {
                       if (savedInfluencers.length > 0) {
-                        const handles = savedInfluencers.map(
-                          (inf) => inf.handle,
-                        );
-                        setRecipientInput(handles.join("\n"));
+                        const resolved = savedInfluencers.map((profile) => {
+                          if (profile.email) {
+                            return profile.displayName
+                              ? `${profile.displayName} <${profile.email}>`
+                              : profile.email;
+                          }
+                          return profile.handle;
+                        });
+                        setRecipientInput(resolved.join("\n"));
                       }
                     }}
                     disabled={

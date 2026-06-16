@@ -3,7 +3,7 @@ import Groq from 'groq-sdk';
 
 export type SocialPlatform = 'YouTube' | 'Instagram' | 'TikTok' | 'Facebook' | 'Twitter';
 
-export type EmailSource = 'youtube' | 'instagram' | 'tiktok' | 'twitter' | 'web_search' | 'fallback';
+export type EmailSource = 'youtube' | 'instagram' | 'tiktok' | 'twitter' | 'web_search' | 'fallback' | 'manual';
 
 export interface CreatorProfile {
   id: string;

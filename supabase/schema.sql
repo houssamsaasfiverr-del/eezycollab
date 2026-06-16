@@ -110,6 +110,8 @@ create table if not exists public.saved_influencers (
     followers integer,
     views integer,
     engagement_rate numeric,
+    email text,
+    email_source text,
     created_at timestamptz not null default now (),
     updated_at timestamptz not null default now (),
     unique (user_id, influencer_id)
