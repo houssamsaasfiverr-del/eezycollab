@@ -161,7 +161,7 @@ export async function sendCampaign(req: Request, res: Response) {
       const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
       const host = req.get('host');
       const baseUrl = `${protocol}://${host}`;
-      const handshakeImgUrl = `${baseUrl}/illustration-handshake.png`;
+      const handshakeImgUrl = `${baseUrl}/illustration-handshake-v2.png`;
 
       const htmlBody = `
         <!DOCTYPE html>

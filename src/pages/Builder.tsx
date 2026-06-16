@@ -1979,7 +1979,70 @@ export default function Builder() {
               </div>
 
               {bulkSendStatus && (
-                <div className="ec-send-status">{bulkSendStatus}</div>
+                <div 
+                  className="ec-send-status-card"
+                  style={{
+                    marginTop: "16px",
+                    padding: "16px 20px",
+                    borderRadius: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    border: bulkSendStatus.includes("Failed: 0") 
+                      ? "1px solid #10b981" 
+                      : bulkSendStatus.toLowerCase().includes("failed") 
+                        ? "1px solid #f59e0b" 
+                        : "1px solid #efdac4",
+                    background: bulkSendStatus.includes("Failed: 0") 
+                      ? "#ecfdf5" 
+                      : bulkSendStatus.toLowerCase().includes("failed") 
+                        ? "#fffbeb" 
+                        : "#fff7ee",
+                    color: bulkSendStatus.includes("Failed: 0") 
+                      ? "#065f46" 
+                      : bulkSendStatus.toLowerCase().includes("failed") 
+                        ? "#92400e" 
+                        : "#6f5a4c",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.02)",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  <div style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: bulkSendStatus.includes("Failed: 0")
+                      ? "#d1fae5"
+                      : bulkSendStatus.toLowerCase().includes("failed")
+                        ? "#fef3c7"
+                        : "#ffe7d0",
+                    color: bulkSendStatus.includes("Failed: 0")
+                      ? "#10b981"
+                      : bulkSendStatus.toLowerCase().includes("failed")
+                        ? "#d97706"
+                        : "#f57c24",
+                    flexShrink: 0
+                  }}>
+                    {bulkSendStatus.includes("Failed: 0") ? (
+                      <Check size={16} strokeWidth={3} />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, fontSize: "14px", fontWeight: 700, fontFamily: "sans-serif" }}>
+                    {bulkSendStatus.includes("Failed: 0") ? (
+                      <div>
+                        <div style={{ color: "#047857", fontSize: "15px", marginBottom: "2px" }}>Emails Sent Successfully!</div>
+                        <div style={{ fontSize: "13px", fontWeight: 500, opacity: 0.9 }}>{bulkSendStatus}</div>
+                      </div>
+                    ) : (
+                      <div>{bulkSendStatus}</div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}
