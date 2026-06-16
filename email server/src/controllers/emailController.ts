@@ -60,8 +60,7 @@ export async function sendCampaign(req: Request, res: Response) {
     let userSmtpRow: UserSmtpConfig | null = null;
 
     if (finalDeliveryMethod === 'user_smtp') {
-      const { data: smtpRow, error: smtpError } = await supabaseAdmin
-        .from('user_smtp_configs')
+      const { data: smtpRow, error: smtpError } = await (supabaseAdmin.from('user_smtp_configs') as any)
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
@@ -70,7 +69,7 @@ export async function sendCampaign(req: Request, res: Response) {
         return res.status(500).json({ error: smtpError.message || 'Failed to load user SMTP config' });
       }
 
-      userSmtpRow = smtpRow as UserSmtpConfig;
+      userSmtpRow = smtpRow as any as UserSmtpConfig;
 
       if (!userSmtpRow || !userSmtpRow.smtp_host || !userSmtpRow.smtp_username || !userSmtpRow.smtp_password) {
         return res.status(400).json({ error: 'User SMTP is not configured. Add host, username, and password in SMTP settings.' });
@@ -105,7 +104,56 @@ export async function sendCampaign(req: Request, res: Response) {
       const renderedSubject = fillTemplate(subject, { name: safeName, email: recipient.email });
       const renderedBody = fillTemplate(messageTemplate, { name: safeName, email: recipient.email });
 
-      const htmlBody = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">${htmlEscape(renderedBody).replace(/\n/g, '<br/>')}</div>`;
+      const htmlBody = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>CollabFree Partnership</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #fcf8f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fcf8f5; padding: 40px 10px;">
+            <tr>
+              <td align="center">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(220, 79, 36, 0.05); border: 1px solid #f2e0d0;">
+                  <!-- Header Logo -->
+                  <tr>
+                    <td style="padding: 30px 40px 15px; text-align: left; background: #ffffff; border-bottom: 1px solid #f7ece2;">
+                      <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td>
+                            <span style="font-size: 22px; font-weight: 800; background: linear-gradient(135deg, #f47d21 0%, #dc4f24 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; color: #dc4f24; letter-spacing: -0.5px; font-family: sans-serif;">CollabFree</span>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <!-- Body Content -->
+                  <tr>
+                    <td style="padding: 40px 40px 30px; font-size: 15px; line-height: 1.7; color: #3c3026; font-family: sans-serif;">
+                      ${htmlEscape(renderedBody).replace(/\n/g, '<br/>')}
+                    </td>
+                  </tr>
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding: 0 40px 40px;">
+                      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #f2e0d0; padding-top: 20px;">
+                        <tr>
+                          <td style="font-size: 11px; color: #8e7868; line-height: 1.5; text-align: center; font-family: sans-serif;">
+                            Sent via <a href="https://collabfree.com" style="color: #dc4f24; text-decoration: none; font-weight: 600;">CollabFree</a> &bull; Connect with the best brands.
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `;
 
       try {
         let providerMessageId: string | null = null;
@@ -169,7 +217,7 @@ export async function sendCampaign(req: Request, res: Response) {
       updated_at: timestamp
     }));
 
-    const { error: insertError } = await supabaseAdmin.from('campaign_emails').insert(rows);
+    const { error: insertError } = await (supabaseAdmin.from('campaign_emails') as any).insert(rows);
     if (insertError) {
       console.error('Failed to persist campaign emails:', insertError);
     }
@@ -198,8 +246,8 @@ export async function getInbox(req: Request, res: Response) {
       return res.status(400).json({ error: 'Missing userId' });
     }
 
-    let query = supabaseAdmin
-      .from('campaign_emails')
+    let query = (supabaseAdmin
+      .from('campaign_emails') as any)
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -230,8 +278,8 @@ export async function getSmtpConfig(req: Request, res: Response) {
       return res.status(400).json({ error: 'Missing userId' });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('user_smtp_configs')
+    const { data, error } = await (supabaseAdmin
+      .from('user_smtp_configs') as any)
       .select('user_id, enabled, smtp_host, smtp_port, smtp_secure, smtp_username, from_email, from_name, smtp_password, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
@@ -319,8 +367,8 @@ export async function saveSmtpConfig(req: Request, res: Response) {
       if (!cleanFromEmail) return res.status(400).json({ error: 'From email is required' });
     }
 
-    const { data: existing, error: existingError } = await supabaseAdmin
-      .from('user_smtp_configs')
+    const { data: existing, error: existingError } = await (supabaseAdmin
+      .from('user_smtp_configs') as any)
       .select('smtp_password')
       .eq('user_id', cleanUserId)
       .maybeSingle();
@@ -338,8 +386,8 @@ export async function saveSmtpConfig(req: Request, res: Response) {
 
     const timestamp = new Date().toISOString();
 
-    const { error: upsertError } = await supabaseAdmin
-      .from('user_smtp_configs')
+    const { error: upsertError } = await (supabaseAdmin
+      .from('user_smtp_configs') as any)
       .upsert(
         {
           user_id: cleanUserId,

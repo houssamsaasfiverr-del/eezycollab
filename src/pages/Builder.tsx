@@ -706,7 +706,14 @@ export default function Builder() {
     if (nextValue !== influencerInput) {
       setInfluencerInput(nextValue);
     }
-    setGroupSelectedHandles(uniqueGroupHandles);
+
+    const groupHandlesChanged =
+      uniqueGroupHandles.length !== groupSelectedHandles.length ||
+      uniqueGroupHandles.some((h, i) => h !== groupSelectedHandles[i]);
+
+    if (groupHandlesChanged) {
+      setGroupSelectedHandles(uniqueGroupHandles);
+    }
   }, [
     groupedInfluencers,
     groupSelectedHandles,
@@ -722,17 +729,19 @@ export default function Builder() {
   // Auto-populate recipients when entering step 4
   useEffect(() => {
     if (step === 4 && parsedInfluencers.length > 0 && !recipientInput.trim()) {
-      const resolved = parsedInfluencers.map((handle) => {
-        const profile =
-          creatorResults.find((c) => c.handle === handle) ||
-          savedInfluencers.find((s) => s.handle === handle);
-        if (profile?.email) {
-          return profile.displayName
-            ? `${profile.displayName} <${profile.email}>`
-            : profile.email;
-        }
-        return handle;
-      });
+      const resolved = parsedInfluencers
+        .map((handle) => {
+          const profile =
+            creatorResults.find((c) => c.handle === handle) ||
+            savedInfluencers.find((s) => s.handle === handle);
+          if (profile?.email) {
+            return profile.displayName
+              ? `${profile.displayName} <${profile.email}>`
+              : profile.email;
+          }
+          return null;
+        })
+        .filter((val): val is string => val !== null);
       setRecipientInput(resolved.join("\n"));
     }
   }, [step, parsedInfluencers, recipientInput, creatorResults, savedInfluencers]);
@@ -1037,13 +1046,54 @@ export default function Builder() {
             <div className="ec-form-grid">
               <label>
                 Describe your product or ideal influencer
-                <textarea
-                  value={productDescription}
-                  onChange={(event) =>
-                    setProductDescription(event.target.value)
-                  }
-                  placeholder="Example: AI startup tool for productivity, looking for tech creators in English speaking markets."
-                />
+                <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }}>
+                  <textarea
+                    value={productDescription}
+                    onChange={(event) =>
+                      setProductDescription(event.target.value)
+                    }
+                    placeholder="Example: AI startup tool for productivity, looking for tech creators in English speaking markets."
+                    style={{ flex: 1, minHeight: "120px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (productDescription.trim()) {
+                        void handleAutoRecommend();
+                        setStep(3);
+                      }
+                    }}
+                    disabled={!productDescription.trim() || creatorLoading}
+                    style={{
+                      width: "100px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      borderRadius: "10px",
+                      background: productDescription.trim()
+                        ? "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)"
+                        : "#e6d7c8",
+                      color: productDescription.trim() ? "#fff" : "#8c7662",
+                      border: "none",
+                      cursor: productDescription.trim() ? "pointer" : "not-allowed",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      boxShadow: productDescription.trim()
+                        ? "0 4px 12px rgba(244, 125, 33, 0.2)"
+                        : "none",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {creatorLoading ? (
+                      <Loader2 size={20} className="spin" />
+                    ) : (
+                      <Search size={20} />
+                    )}
+                    <span>Search</span>
+                  </button>
+                </div>
               </label>
 
               <label>
@@ -1427,28 +1477,30 @@ export default function Builder() {
                                       No public email found
                                     </p>
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingEmailId(profile.id);
-                                      setEditingEmailValue(profile.email || "");
-                                    }}
-                                    style={{
-                                      background: 'none',
-                                      border: 'none',
-                                      color: '#f57c24',
-                                      cursor: 'pointer',
-                                      padding: '0 4px',
-                                      fontSize: '11px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '2px',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    {profile.email ? "(Edit)" : "(Add Email)"}
-                                  </button>
+                                  {!profile.email && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingEmailId(profile.id);
+                                        setEditingEmailValue(profile.email || "");
+                                      }}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#f57c24',
+                                        cursor: 'pointer',
+                                        padding: '0 4px',
+                                        fontSize: '11px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        fontWeight: 600
+                                      }}
+                                    >
+                                      (Add Email)
+                                    </button>
+                                  )}
                                 </div>
                               )}
                               {profile.email && (profile as any).emailSource && (
@@ -1765,17 +1817,19 @@ export default function Builder() {
                     type="button"
                     onClick={() => {
                       if (parsedInfluencers.length > 0) {
-                        const resolved = parsedInfluencers.map((handle) => {
-                          const profile =
-                            creatorResults.find((c) => c.handle === handle) ||
-                            savedInfluencers.find((s) => s.handle === handle);
-                          if (profile?.email) {
-                            return profile.displayName
-                              ? `${profile.displayName} <${profile.email}>`
-                              : profile.email;
-                          }
-                          return handle;
-                        });
+                        const resolved = parsedInfluencers
+                          .map((handle) => {
+                            const profile =
+                              creatorResults.find((c) => c.handle === handle) ||
+                              savedInfluencers.find((s) => s.handle === handle);
+                            if (profile?.email) {
+                              return profile.displayName
+                                ? `${profile.displayName} <${profile.email}>`
+                                : profile.email;
+                            }
+                            return null;
+                          })
+                          .filter((val): val is string => val !== null);
                         setRecipientInput(resolved.join("\n"));
                       }
                     }}
@@ -1805,14 +1859,16 @@ export default function Builder() {
                     type="button"
                     onClick={() => {
                       if (savedInfluencers.length > 0) {
-                        const resolved = savedInfluencers.map((profile) => {
-                          if (profile.email) {
-                            return profile.displayName
-                              ? `${profile.displayName} <${profile.email}>`
-                              : profile.email;
-                          }
-                          return profile.handle;
-                        });
+                        const resolved = savedInfluencers
+                          .map((profile) => {
+                            if (profile.email) {
+                              return profile.displayName
+                                ? `${profile.displayName} <${profile.email}>`
+                                : profile.email;
+                            }
+                            return null;
+                          })
+                          .filter((val): val is string => val !== null);
                         setRecipientInput(resolved.join("\n"));
                       }
                     }}

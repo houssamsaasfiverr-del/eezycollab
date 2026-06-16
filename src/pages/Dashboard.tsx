@@ -1430,28 +1430,30 @@ export default function Dashboard({
                                         No public email found
                                       </p>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingEmailId(profile.id);
-                                        setEditingEmailValue(profile.email || "");
-                                      }}
-                                      style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#f57c24',
-                                        cursor: 'pointer',
-                                        padding: '0 4px',
-                                        fontSize: '11px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '2px',
-                                        fontWeight: 600
-                                      }}
-                                    >
-                                      {profile.email ? "(Edit)" : "(Add Email)"}
-                                    </button>
+                                    {!profile.email && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingEmailId(profile.id);
+                                          setEditingEmailValue(profile.email || "");
+                                        }}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#f57c24',
+                                          cursor: 'pointer',
+                                          padding: '0 4px',
+                                          fontSize: '11px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '2px',
+                                          fontWeight: 600
+                                        }}
+                                      >
+                                        (Add Email)
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                                 {profile.email && (profile as any).emailSource && (
