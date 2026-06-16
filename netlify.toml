@@ -5,6 +5,15 @@
 [build.environment]
   NODE_VERSION = "22"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/email/*"
+  to = "/.netlify/functions/email/:splat"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
