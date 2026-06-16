@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import emailRoutes from './routes/emailRoutes.js';
 
 // Load local environment variables if present
@@ -17,6 +18,10 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Serve static assets from public folder for local handshake image accessibility
+app.use(express.static(path.resolve(process.cwd(), '../public')));
+app.use(express.static(path.resolve(process.cwd(), './public')));
 
 // Routes
 app.use('/api/email', emailRoutes);

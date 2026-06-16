@@ -1045,16 +1045,8 @@ export default function Builder() {
           {step === 1 && (
             <div className="ec-form-grid">
               <label>
-                Describe your product or ideal influencer
-                <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }}>
-                  <textarea
-                    value={productDescription}
-                    onChange={(event) =>
-                      setProductDescription(event.target.value)
-                    }
-                    placeholder="Example: AI startup tool for productivity, looking for tech creators in English speaking markets."
-                    style={{ flex: 1, minHeight: "120px" }}
-                  />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <span>Describe your product or ideal influencer</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1065,13 +1057,8 @@ export default function Builder() {
                     }}
                     disabled={!productDescription.trim() || creatorLoading}
                     style={{
-                      width: "100px",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      borderRadius: "10px",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
                       background: productDescription.trim()
                         ? "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)"
                         : "#e6d7c8",
@@ -1079,21 +1066,32 @@ export default function Builder() {
                       border: "none",
                       cursor: productDescription.trim() ? "pointer" : "not-allowed",
                       fontWeight: 700,
-                      fontSize: "13px",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
                       boxShadow: productDescription.trim()
-                        ? "0 4px 12px rgba(244, 125, 33, 0.2)"
+                        ? "0 2px 6px rgba(244, 125, 33, 0.2)"
                         : "none",
                       transition: "all 0.2s",
                     }}
                   >
                     {creatorLoading ? (
-                      <Loader2 size={20} className="spin" />
+                      <Loader2 size={12} className="spin" />
                     ) : (
-                      <Search size={20} />
+                      <Search size={12} />
                     )}
                     <span>Search</span>
                   </button>
                 </div>
+                <textarea
+                  value={productDescription}
+                  onChange={(event) =>
+                    setProductDescription(event.target.value)
+                  }
+                  placeholder="Example: AI startup tool for productivity, looking for tech creators in English speaking markets."
+                  style={{ minHeight: "120px" }}
+                />
               </label>
 
               <label>
