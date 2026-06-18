@@ -30,6 +30,7 @@ export interface SendBulkEmailOptions {
   subject: string;
   messageTemplate: string;
   recipients: RecipientInput[];
+  useEmailTemplate?: boolean;
 }
 
 export interface UserSmtpConfig {

@@ -62,6 +62,7 @@ interface BuilderDraft {
   hashtags: string;
   influencerInput: string;
   messageTemplate: string;
+  useEmailTemplate?: boolean;
 }
 
 interface InfluencerGroup {
@@ -75,6 +76,50 @@ const defaultOutreachTemplate =
   "Hi {{name}},\n\nWe are launching a new campaign and would love to collaborate with you. If you are open, I can share the full brief and timelines.\n\nBest,\nCollabFree Team";
 
 const TEMPLATE_STORAGE_KEY = "collabfree:campaign-template";
+
+interface OutreachTemplate {
+  id: number;
+  name: string;
+  category: "General" | "Sponsorship" | "Affiliate" | "Ambassador";
+  subject: string;
+  body: string;
+  description: string;
+}
+
+const outreachTemplates: OutreachTemplate[] = [
+  {
+    id: 1,
+    name: "Standard Collaboration Invite",
+    category: "General",
+    subject: "Collaboration Opportunity with {{name}}",
+    body: "Hi {{name}},\n\nI came across your content and absolutely love your style and the way you connect with your audience. We are currently launching a new campaign and would love to collaborate with you.\n\nIf you're open to partnership opportunities, let me know and I can share the brief and timelines.\n\nBest,\nCollabFree Team",
+    description: "A friendly, low-friction invitation to collaborate. Great for general outreach.",
+  },
+  {
+    id: 2,
+    name: "Dedicated Product Sponsorship",
+    category: "Sponsorship",
+    subject: "Paid Sponsorship Proposal: {{name}} x CollabFree",
+    body: "Hi {{name}},\n\nWe would love to sponsor a dedicated integration or review featuring our product on your channel. We've been following your work and think your niche aligns perfectly with our brand.\n\nWe offer competitive flat rates and will send over free product access for your review.\n\nLet me know if you are interested in discussing rates and details!\n\nBest,\nCollabFree Team",
+    description: "A formal paid sponsorship request. Best for professional creators.",
+  },
+  {
+    id: 3,
+    name: "Affiliate & Commission Program",
+    category: "Affiliate",
+    subject: "Exclusive Affiliate Partnership: {{name}}",
+    body: "Hi {{name}},\n\nWe are launching an exclusive affiliate campaign and would love to invite you to join. As a partner, you'll receive a high commission rate on all sales generated through your custom link, plus a special discount code for your audience.\n\nWe will also send you a free onboarding package to help you get started.\n\nWould you be open to joining our team?\n\nBest,\nCollabFree Team",
+    description: "An performance-based proposal focusing on commissions and codes.",
+  },
+  {
+    id: 4,
+    name: "Long-term Brand Ambassador Invite",
+    category: "Ambassador",
+    subject: "Ambassador Invitation: Become a CollabFree Ambassador, {{name}}",
+    body: "Hi {{name}},\n\nWe are looking for long-term Brand Ambassadors who truly represent our values and style. Having followed your content for a while, we think you're the perfect fit.\n\nAs an ambassador, you'll receive monthly product stipends, priority campaign bookings, and custom affiliate rates.\n\nLet us know if you'd like to jump on a quick chat to discuss the details!\n\nBest,\nCollabFree Team",
+    description: "Ideal for inviting creators to sign long-term partnership contracts.",
+  },
+];
 
 const stepLabels: Array<{ id: StepId; label: string }> = [
   { id: 1, label: "Set Up" },
@@ -118,6 +163,11 @@ export default function Builder() {
   const [emailSubject, setEmailSubject] = useState(
     "Partnership opportunity with {{name}}",
   );
+  const [useEmailTemplate, setUseEmailTemplate] = useState(true);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [templateSearchTerm, setTemplateSearchTerm] = useState("");
+  const [templateSelectedCategory, setTemplateSelectedCategory] = useState("All");
   const [recipientInput, setRecipientInput] = useState("");
   const [sendingBulk, setSendingBulk] = useState(false);
   const [bulkSendStatus, setBulkSendStatus] = useState("");
@@ -487,6 +537,11 @@ export default function Builder() {
           setHashtags(draft.hashtags || "");
           setInfluencerInput(draft.influencerInput || "");
           setMessageTemplate(draft.messageTemplate || defaultOutreachTemplate);
+          setUseEmailTemplate(
+            typeof draft.useEmailTemplate === "boolean"
+              ? draft.useEmailTemplate
+              : true,
+          );
           setProjectStatus(`Editing: ${data.name || "Untitled Project"}`);
           return;
         } catch {
@@ -776,6 +831,7 @@ export default function Builder() {
     hashtags,
     influencerInput,
     messageTemplate,
+    useEmailTemplate,
   });
 
   const persistProject = async (markLaunched = false): Promise<boolean> => {
@@ -945,6 +1001,7 @@ export default function Builder() {
         subject: emailSubject,
         messageTemplate,
         recipients: parsedRecipients,
+        useEmailTemplate,
       });
 
       setBulkSendStatus(
@@ -1774,17 +1831,36 @@ export default function Builder() {
             <div className="ec-step-card">
               <div className="ec-step-header">
                 <h2>Contact all shortlisted influencers</h2>
-                <button
-                  type="button"
-                  className="ec-config-btn-small"
-                  onClick={() => {
-                    setSmtpModalOpen(true);
-                    void loadUserSmtp({ silent: false });
-                  }}
-                >
-                  <Settings size={14} />
-                  SMTP config
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="ec-config-btn-small"
+                    onClick={() => {
+                      setIsTemplateModalOpen(true);
+                      setSelectedTemplateId(1);
+                    }}
+                    style={{
+                      background: "linear-gradient(135deg, #f47d21 0%, #dc4f24 100%)",
+                      color: "#fff",
+                      border: "none",
+                      boxShadow: "0 2px 6px rgba(244, 125, 33, 0.15)"
+                    }}
+                  >
+                    <Sparkles size={14} />
+                    Outreach Templates
+                  </button>
+                  <button
+                    type="button"
+                    className="ec-config-btn-small"
+                    onClick={() => {
+                      setSmtpModalOpen(true);
+                      void loadUserSmtp({ silent: false });
+                    }}
+                  >
+                    <Settings size={14} />
+                    SMTP config
+                  </button>
+                </div>
               </div>
               <p>
                 Add recipients, compose a reusable message, and send bulk emails
@@ -1800,6 +1876,63 @@ export default function Builder() {
                   placeholder="Partnership opportunity with {{name}}"
                 />
               </label>
+
+              <div>
+                <span style={{ display: "block", fontSize: "13px", fontWeight: 700, color: "#4f3f32", marginBottom: "8px" }}>
+                  Email Layout Style
+                </span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setUseEmailTemplate(true)}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      border: useEmailTemplate ? "2px solid #ef6d25" : "1.5px solid #ebd5bf",
+                      background: useEmailTemplate ? "#fffcf8" : "#fffefb",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 800, color: useEmailTemplate ? "#ef6d25" : "#4f3f32", marginBottom: "4px" }}>
+                      <Sparkles size={13} />
+                      Branded Template
+                    </span>
+                    <span style={{ fontSize: "11px", fontWeight: 500, color: "#735f50", lineHeight: "1.4" }}>
+                      Beautiful HTML layout with logo, handshake graphic, and campaign details.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseEmailTemplate(false)}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      border: !useEmailTemplate ? "2px solid #ef6d25" : "1.5px solid #ebd5bf",
+                      background: !useEmailTemplate ? "#fffcf8" : "#fffefb",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 800, color: !useEmailTemplate ? "#ef6d25" : "#4f3f32", marginBottom: "4px" }}>
+                      <Mail size={13} />
+                      Plain Message Only
+                    </span>
+                    <span style={{ fontSize: "11px", fontWeight: 500, color: "#735f50", lineHeight: "1.4" }}>
+                      A clean, plain message displaying only your text. Ideal for highly personalized outreach.
+                    </span>
+                  </button>
+                </div>
+              </div>
 
               <label>
                 Recipients (one per line)
@@ -1928,10 +2061,14 @@ export default function Builder() {
                 />
               </label>
 
-              <textarea
-                value={messageTemplate}
-                onChange={(event) => setMessageTemplate(event.target.value)}
-              />
+              <label>
+                Message template body
+                <textarea
+                  value={messageTemplate}
+                  onChange={(event) => setMessageTemplate(event.target.value)}
+                  placeholder="Hi {{name}},\n\n..."
+                />
+              </label>
 
               <div className="ec-template-preview">
                 <Mail size={16} />
@@ -2141,6 +2278,123 @@ export default function Builder() {
           )}
         </footer>
       </main>
+
+      {isTemplateModalOpen && (
+        <div className="ec-template-modal-overlay">
+          <div className="ec-template-modal-content">
+            <div className="ec-template-modal-header">
+              <h2>Browse Email Templates</h2>
+              <button
+                type="button"
+                className="ec-close-btn"
+                onClick={() => {
+                  setIsTemplateModalOpen(false);
+                  setTemplateSearchTerm("");
+                  setTemplateSelectedCategory("All");
+                  setSelectedTemplateId(null);
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="ec-template-modal-body">
+              {/* Left Column: List and Filters */}
+              <div className="ec-template-modal-sidebar">
+                <div className="ec-template-search-wrapper">
+                  <Search size={16} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search templates..."
+                    value={templateSearchTerm}
+                    onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                  />
+                </div>
+                
+                <div className="ec-template-categories">
+                  {["All", "General", "Sponsorship", "Affiliate", "Ambassador"].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      className={`category-btn ${templateSelectedCategory === cat ? "active" : ""}`}
+                      onClick={() => setTemplateSelectedCategory(cat)}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="ec-template-list">
+                  {outreachTemplates
+                    .filter((t) => {
+                      const matchesSearch =
+                        t.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) ||
+                        t.description.toLowerCase().includes(templateSearchTerm.toLowerCase());
+                      const matchesCategory =
+                        templateSelectedCategory === "All" || t.category === templateSelectedCategory;
+                      return matchesSearch && matchesCategory;
+                    })
+                    .map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`template-item-btn ${selectedTemplateId === t.id ? "active" : ""}`}
+                        onClick={() => setSelectedTemplateId(t.id)}
+                      >
+                        <div className="template-item-name">{t.name}</div>
+                        <div className="template-item-desc">{t.description}</div>
+                        <span className="template-item-badge">{t.category}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+              
+              {/* Right Column: Template Preview */}
+              <div className="ec-template-modal-preview">
+                {selectedTemplateId !== null ? (
+                  (() => {
+                    const temp = outreachTemplates.find((t) => t.id === selectedTemplateId);
+                    if (!temp) return null;
+                    return (
+                      <div className="preview-container">
+                        <div className="preview-header">
+                          <div className="preview-label">Live Preview</div>
+                          <div className="preview-title">{temp.name}</div>
+                        </div>
+                        <div className="preview-subject">
+                          <strong>Subject:</strong> {temp.subject}
+                        </div>
+                        <div className="preview-body">
+                          {temp.body.split("\n").map((line, i) => (
+                            <p key={i}>{line || <br />}</p>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="ec-template-apply-btn"
+                          onClick={() => {
+                            setEmailSubject(temp.subject);
+                            setMessageTemplate(temp.body);
+                            setIsTemplateModalOpen(false);
+                            setBulkSendStatus("Template loaded successfully.");
+                          }}
+                        >
+                          Use this template
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="preview-empty">
+                    <Mail size={40} />
+                    <p>Select a template from the list to preview and use it.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {smtpModalOpen && (
         <div
@@ -3869,6 +4123,308 @@ export default function Builder() {
 
         .ec-analysis-open:hover {
           background: #fff7ef;
+        }
+
+        /* Email Layout Cards & Template Library Modal Styles */
+        .ec-template-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(30, 20, 15, 0.45);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+        }
+
+        .ec-template-modal-content {
+          background: #ffffff;
+          border-radius: 20px;
+          width: 100%;
+          max-width: 900px;
+          height: 600px;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 50px rgba(79, 63, 50, 0.15);
+          border: 1px solid #f2dec8;
+          overflow: hidden;
+          animation: modalAppear 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalAppear {
+          from {
+            opacity: 0;
+            transform: scale(0.96) translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .ec-template-modal-header {
+          padding: 16px 24px;
+          border-bottom: 1px solid #f2deca;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: #fffbf7;
+        }
+
+        .ec-template-modal-header h2 {
+          margin: 0;
+          font-size: 20px;
+          color: #2b221d;
+          font-weight: 800;
+        }
+
+        .ec-close-btn {
+          border: 0;
+          background: transparent;
+          color: #8c7662;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 6px;
+          border-radius: 50%;
+          transition: background 0.15s;
+        }
+
+        .ec-close-btn:hover {
+          background: #f5e7d8;
+          color: #1f1712;
+        }
+
+        .ec-template-modal-body {
+          flex: 1;
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          overflow: hidden;
+        }
+
+        .ec-template-modal-sidebar {
+          border-right: 1px solid #f2deca;
+          background: #fdfaf7;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .ec-template-search-wrapper {
+          padding: 14px 16px 8px;
+          position: relative;
+        }
+
+        .ec-template-search-wrapper .search-icon {
+          position: absolute;
+          left: 26px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #8c7662;
+        }
+
+        .ec-template-search-wrapper input {
+          padding-left: 36px;
+          border-color: #ebd5bf;
+        }
+
+        .ec-template-categories {
+          padding: 4px 16px 10px;
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .category-btn {
+          border: 1px solid #ebd5bf;
+          background: #fff;
+          color: #6c5849;
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 8px;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .category-btn.active {
+          background: #ef6d25;
+          color: #fff;
+          border-color: #ef6d25;
+        }
+
+        .ec-template-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 8px 16px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .template-item-btn {
+          border: 1px solid #ebd5bf;
+          border-radius: 12px;
+          background: #fff;
+          padding: 12px;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.2s;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .template-item-btn:hover {
+          background: #fffdfb;
+          border-color: #ef6d25;
+          transform: translateY(-1px);
+        }
+
+        .template-item-btn.active {
+          border-color: #ef6d25;
+          background: #fffaf5;
+          box-shadow: 0 4px 10px rgba(239, 109, 37, 0.06);
+        }
+
+        .template-item-name {
+          font-size: 13px;
+          font-weight: 800;
+          color: #2b221d;
+        }
+
+        .template-item-desc {
+          font-size: 11px;
+          color: #7a6555;
+          line-height: 1.4;
+          font-weight: 500;
+        }
+
+        .template-item-badge {
+          align-self: flex-start;
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+          background: #f7ede2;
+          color: #8c7662;
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin-top: 4px;
+        }
+
+        .ec-template-modal-preview {
+          background: #ffffff;
+          overflow-y: auto;
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .preview-empty {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: #8c7662;
+          gap: 12px;
+          text-align: center;
+        }
+
+        .preview-empty p {
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .preview-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .preview-header {
+          border-bottom: 1px solid #f2deca;
+          padding-bottom: 12px;
+        }
+
+        .preview-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #cd6021;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 4px;
+        }
+
+        .preview-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #2b221d;
+        }
+
+        .preview-subject {
+          background: #fffaf5;
+          border: 1px solid #f2deca;
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 13px;
+          color: #2b221d;
+        }
+
+        .preview-body {
+          flex: 1;
+          background: #faf7f5;
+          border: 1px solid #ebd5bf;
+          border-radius: 12px;
+          padding: 16px 20px;
+          font-size: 14px;
+          color: #4f3f32;
+          line-height: 1.6;
+          overflow-y: auto;
+        }
+
+        .preview-body p {
+          margin: 0 0 12px 0;
+          font-weight: 500;
+        }
+
+        .ec-template-apply-btn {
+          border: 0;
+          background: linear-gradient(135deg, #f47d21 0%, #dc4f24 100%);
+          color: #fff;
+          font-weight: 800;
+          font-size: 14px;
+          padding: 12px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          box-shadow: 0 4px 12px rgba(244, 125, 33, 0.2);
+        }
+
+        .ec-template-apply-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(244, 125, 33, 0.3);
+        }
+
+        @media (max-width: 768px) {
+          .ec-template-modal-body {
+            grid-template-columns: 1fr;
+          }
+          .ec-template-modal-sidebar {
+            border-right: 0;
+            border-bottom: 1px solid #f2deca;
+            height: 250px;
+          }
         }
       `}</style>
     </div>

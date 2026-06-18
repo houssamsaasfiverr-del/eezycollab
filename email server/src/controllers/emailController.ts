@@ -34,7 +34,8 @@ export async function sendCampaign(req: Request, res: Response) {
       deliveryMethod,
       subject,
       messageTemplate,
-      recipients
+      recipients,
+      useEmailTemplate
     } = req.body as SendBulkEmailOptions;
 
     if (!userId || !subject || !messageTemplate || !Array.isArray(recipients) || recipients.length === 0) {
@@ -163,161 +164,192 @@ export async function sendCampaign(req: Request, res: Response) {
       const baseUrl = `${protocol}://${host}`;
       const handshakeImgUrl = `${baseUrl}/illustration-handshake-v2.png`;
 
-      const htmlBody = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>CollabFree Partnership</title>
-        </head>
-        <body style="margin: 0; padding: 0; background-color: #f6f5fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
-          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f6f5fc; padding: 40px 10px;">
-            <tr>
-              <td align="center">
-                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 650px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(99, 102, 241, 0.05); border: 1px solid #eae6f3;">
-                  
-                  <!-- Header Logo -->
-                  <tr>
-                    <td style="padding: 30px 40px 15px; background: #ffffff; border-bottom: 1px solid #f3f2f8;">
-                      <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                        <tr>
-                          <td align="left" style="vertical-align: middle;">
-                            <table border="0" cellpadding="0" cellspacing="0">
-                              <tr>
-                                <td style="vertical-align: middle;">
-                                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #6366f1; color: #ffffff; font-weight: bold; font-size: 18px; line-height: 32px; text-align: center; font-family: sans-serif;">C</div>
-                                </td>
-                                <td style="vertical-align: middle; padding-left: 8px;">
-                                  <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="font-size: 20px; font-weight: 800; color: #1e1b4b; letter-spacing: -0.5px; font-family: sans-serif; text-decoration: none;">CollabFree</a>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                          <td align="right" style="vertical-align: middle; font-size: 11px; color: #8b8998; font-weight: 500; font-family: sans-serif;">
-                            Empowering Brands. Building Futures.
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+      let htmlBody = '';
 
-                  <!-- Main Content (Two Columns for Text & Handshake Illustration) -->
-                  <tr>
-                    <td style="padding: 40px 40px 30px;">
-                      <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                        <tr>
-                          <!-- Left Column: Text -->
-                          <td align="left" style="vertical-align: top; width: 62%;">
-                            <h1 style="font-size: 24px; font-weight: 800; color: #1e1b4b; margin: 0 0 20px 0; font-family: sans-serif; letter-spacing: -0.5px;">
-                              ${htmlEscape(greetingLine)}
-                            </h1>
-                            ${remainingHtmlBody}
-                          </td>
-                          
-                          <!-- Right Column: Handshake Image -->
-                          <td align="center" style="vertical-align: middle; width: 38%; padding-left: 20px;">
-                            <img src="${handshakeImgUrl}" width="180" style="display: block; width: 100%; max-width: 180px; height: auto; border: 0;" alt="CollabFree Illustration" />
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+      if (useEmailTemplate !== false) {
+        htmlBody = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>CollabFree Partnership</title>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f6f5fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f6f5fc; padding: 40px 10px;">
+              <tr>
+                <td align="center">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 650px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(99, 102, 241, 0.05); border: 1px solid #eae6f3;">
+                    
+                    <!-- Header Logo -->
+                    <tr>
+                      <td style="padding: 30px 40px 15px; background: #ffffff; border-bottom: 1px solid #f3f2f8;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tr>
+                            <td align="left" style="vertical-align: middle;">
+                              <table border="0" cellpadding="0" cellspacing="0">
+                                <tr>
+                                  <td style="vertical-align: middle;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #6366f1; color: #ffffff; font-weight: bold; font-size: 18px; line-height: 32px; text-align: center; font-family: sans-serif;">C</div>
+                                  </td>
+                                  <td style="vertical-align: middle; padding-left: 8px;">
+                                    <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="font-size: 20px; font-weight: 800; color: #1e1b4b; letter-spacing: -0.5px; font-family: sans-serif; text-decoration: none;">CollabFree</a>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                            <td align="right" style="vertical-align: middle; font-size: 11px; color: #8b8998; font-weight: 500; font-family: sans-serif;">
+                              Empowering Brands. Building Futures.
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-                  <!-- 3-Column Features Card -->
-                  <tr>
-                    <td style="padding: 0 40px 20px;">
-                      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf9ff; border: 1px solid #eae6f3; border-radius: 12px; padding: 20px 15px;">
-                        <tr>
-                          <!-- Feature 1: New Campaign -->
-                          <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px;">
-                            <table border="0" cellpadding="0" cellspacing="0">
-                              <tr>
-                                <td style="vertical-align: middle;">
-                                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">🎯</div>
-                                </td>
-                                <td style="vertical-align: middle; padding-left: 8px;">
-                                  <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">New Campaign</div>
-                                  <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Brand collaboration</div>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                          <!-- Feature 2: Timelines -->
-                          <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px; border-left: 1px solid #eae6f3;">
-                            <table border="0" cellpadding="0" cellspacing="0">
-                              <tr>
-                                <td style="vertical-align: middle; padding-left: 10px;">
-                                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">📅</div>
-                                </td>
-                                <td style="vertical-align: middle; padding-left: 8px;">
-                                  <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">Timelines</div>
-                                  <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Flexible structure</div>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                          <!-- Feature 3: Partnership -->
-                          <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px; border-left: 1px solid #eae6f3;">
-                            <table border="0" cellpadding="0" cellspacing="0">
-                              <tr>
-                                <td style="vertical-align: middle; padding-left: 10px;">
-                                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">👥</div>
-                                </td>
-                                <td style="vertical-align: middle; padding-left: 8px;">
-                                  <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">Partnership</div>
-                                  <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Impact together</div>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+                    <!-- Main Content (Two Columns for Text & Handshake Illustration) -->
+                    <tr>
+                      <td style="padding: 40px 40px 30px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tr>
+                            <!-- Left Column: Text -->
+                            <td align="left" style="vertical-align: top; width: 62%;">
+                              <h1 style="font-size: 24px; font-weight: 800; color: #1e1b4b; margin: 0 0 20px 0; font-family: sans-serif; letter-spacing: -0.5px;">
+                                ${htmlEscape(greetingLine)}
+                              </h1>
+                              ${remainingHtmlBody}
+                            </td>
+                            
+                            <!-- Right Column: Handshake Image -->
+                            <td align="center" style="vertical-align: middle; width: 38%; padding-left: 20px;">
+                              <img src="${handshakeImgUrl}" width="180" style="display: block; width: 100%; max-width: 180px; height: auto; border: 0;" alt="CollabFree Illustration" />
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-                  <!-- Campaign Details (Direct Content instead of button) -->
-                  <tr>
-                    <td style="padding: 10px 40px 40px;">
-                      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fcfbfe; border: 1px dashed #c7c4e6; border-radius: 12px; padding: 22px;">
-                        <tr>
-                          <td align="left" style="font-family: sans-serif;">
-                            <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 800; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Campaign Details</h3>
-                            <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4b4869;">
-                              ${htmlEscape(projectDescription || 'No additional campaign description provided.')}
-                            </p>
-                            ${platformName || hashtagsList ? `
-                              <div style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed #eae6f3; font-size: 11px; color: #8b8998;">
-                                ${platformName ? `<span style="margin-right: 15px;"><strong>Platform:</strong> ${htmlEscape(platformName)}</span>` : ''}
-                                ${hashtagsList ? `<span><strong>Hashtags:</strong> ${htmlEscape(hashtagsList)}</span>` : ''}
-                              </div>
-                            ` : ''}
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+                    <!-- 3-Column Features Card -->
+                    <tr>
+                      <td style="padding: 0 40px 20px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf9ff; border: 1px solid #eae6f3; border-radius: 12px; padding: 20px 15px;">
+                          <tr>
+                            <!-- Feature 1: New Campaign -->
+                            <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px;">
+                              <table border="0" cellpadding="0" cellspacing="0">
+                                <tr>
+                                  <td style="vertical-align: middle;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">🎯</div>
+                                  </td>
+                                  <td style="vertical-align: middle; padding-left: 8px;">
+                                    <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">New Campaign</div>
+                                    <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Brand collaboration</div>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                            <!-- Feature 2: Timelines -->
+                            <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px; border-left: 1px solid #eae6f3;">
+                              <table border="0" cellpadding="0" cellspacing="0">
+                                <tr>
+                                  <td style="vertical-align: middle; padding-left: 10px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">📅</div>
+                                  </td>
+                                  <td style="vertical-align: middle; padding-left: 8px;">
+                                    <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">Timelines</div>
+                                    <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Flexible structure</div>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                            <!-- Feature 3: Partnership -->
+                            <td width="33.33%" align="left" style="vertical-align: middle; padding: 0 10px; border-left: 1px solid #eae6f3;">
+                              <table border="0" cellpadding="0" cellspacing="0">
+                                <tr>
+                                  <td style="vertical-align: middle; padding-left: 10px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #eef2ff; color: #6366f1; font-size: 15px; line-height: 32px; text-align: center;">👥</div>
+                                  </td>
+                                  <td style="vertical-align: middle; padding-left: 8px;">
+                                    <div style="font-size: 13px; font-weight: 700; color: #1e1b4b; font-family: sans-serif;">Partnership</div>
+                                    <div style="font-size: 11px; color: #6b7280; font-weight: 500; font-family: sans-serif; margin-top: 1px;">Impact together</div>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-                  <!-- Footer -->
-                  <tr>
-                    <td style="padding: 0 40px 30px;">
-                      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #f3f2f8; padding-top: 20px;">
-                        <tr>
-                          <td align="center" style="font-size: 11px; color: #8b8998; line-height: 1.5; font-family: sans-serif;">
-                            Sent with ❤️ by <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="color: #6366f1; text-decoration: none; font-weight: 600;">CollabFree</a> &bull; Connect with the best brands.
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+                    <!-- Campaign Details (Direct Content instead of button) -->
+                    <tr>
+                      <td style="padding: 10px 40px 40px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fcfbfe; border: 1px dashed #c7c4e6; border-radius: 12px; padding: 22px;">
+                          <tr>
+                            <td align="left" style="font-family: sans-serif;">
+                              <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 800; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Campaign Details</h3>
+                              <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4b4869;">
+                                ${htmlEscape(projectDescription || 'No additional campaign description provided.')}
+                              </p>
+                              ${platformName || hashtagsList ? `
+                                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed #eae6f3; font-size: 11px; color: #8b8998;">
+                                  ${platformName ? `<span style="margin-right: 15px;"><strong>Platform:</strong> ${htmlEscape(platformName)}</span>` : ''}
+                                  ${hashtagsList ? `<span><strong>Hashtags:</strong> ${htmlEscape(hashtagsList)}</span>` : ''}
+                                </div>
+                              ` : ''}
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-      `;
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding: 0 40px 30px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #f3f2f8; padding-top: 20px;">
+                          <tr>
+                            <td align="center" style="font-size: 11px; color: #8b8998; line-height: 1.5; font-family: sans-serif;">
+                              Sent with ❤️ by <a href="https://lambent-truffle-7e7dbc.netlify.app/" style="color: #6366f1; text-decoration: none; font-weight: 600;">CollabFree</a> &bull; Connect with the best brands.
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+          </html>
+        `;
+      } else {
+        const plainParagraphs = renderedBody
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+          .map(line => {
+            const escaped = htmlEscape(line);
+            const highlighted = escaped.replace(/\bcollaborate\b/gi, '<span style="color: #6366f1; font-weight: 700;">collaborate</span>');
+            return `<p style="font-size: 15px; line-height: 1.6; color: #2b221d; margin: 0 0 12px 0; font-family: sans-serif;">${highlighted}</p>`;
+          })
+          .join('');
+
+        htmlBody = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${htmlEscape(renderedSubject)}</title>
+          </head>
+          <body style="margin: 0; padding: 24px; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+            <div style="max-width: 600px; margin: 0 auto;">
+              ${plainParagraphs}
+            </div>
+          </body>
+          </html>
+        `;
+      }
 
       try {
         let providerMessageId: string | null = null;

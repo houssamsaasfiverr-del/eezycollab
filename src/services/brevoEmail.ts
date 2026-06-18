@@ -12,6 +12,7 @@ export interface SendBulkEmailOptions {
   subject: string;
   messageTemplate: string;
   recipients: CampaignRecipient[];
+  useEmailTemplate?: boolean;
 }
 
 export interface CampaignEmailLog {
